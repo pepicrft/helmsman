@@ -9,7 +9,6 @@ defmodule Glossia.Agent.Tools.Bash do
 
   - `command` - The bash command to execute
   - `cwd` - Directory to run the command in (optional)
-  - `packages` - Nix packages to make available for this command (optional)
   - `timeout` - Timeout in seconds (optional, default: 120)
 
   ## Safety
@@ -32,7 +31,7 @@ defmodule Glossia.Agent.Tools.Bash do
     """
     Execute a bash command in the current working directory. Returns stdout and stderr.
     Output is truncated to #{@max_lines} lines or #{div(@max_bytes, 1024)}KB.
-    Optionally provide a cwd, Nix packages to install for this command, and a timeout in seconds.
+    Optionally provide a cwd and timeout in seconds.
     """
     |> String.trim()
   end
@@ -50,10 +49,6 @@ defmodule Glossia.Agent.Tools.Bash do
           type: "string",
           description: "Directory to run the command in (relative or absolute)"
         },
-        packages: %{
-          type: "array",
-          description: "Nix packages to make available for this command. Simple names are resolved as nixpkgs#<name>."
-        },
         timeout: %{
           type: "number",
           description: "Timeout in seconds (optional, default: #{div(@default_timeout, 1000)})"
@@ -67,11 +62,9 @@ defmodule Glossia.Agent.Tools.Bash do
   def call(%{"command" => command} = args, context) do
     base_cwd = context[:cwd] || File.cwd!()
     cwd = resolve_cwd(args["cwd"], base_cwd)
-    packages = List.wrap(args["packages"] || [])
     timeout = trunc((args["timeout"] || div(@default_timeout, 1000)) * 1000)
-    opts = context[:opts] || []
 
-    case execute_command(command, cwd, timeout, packages, opts) do
+    case execute_command(command, cwd, timeout) do
       {:ok, output, exit_code} ->
         {truncated_output, truncated?} = truncate_output(output)
 
@@ -104,13 +97,18 @@ defmodule Glossia.Agent.Tools.Bash do
     end
   end
 
-  defp execute_command(command, cwd, timeout, packages, opts) do
-    nix_executable = Keyword.get(opts, :nix_executable, "nix")
-    runner = Keyword.get(opts, :runner, &run_invocation/5)
-
-    with {:ok, {executable, args}} <- build_invocation(command, packages, nix_executable, opts) do
-      runner.(executable, args, cwd, timeout, build_env())
+  defp execute_command(command, cwd, timeout) do
+    case MuonTrap.cmd("bash", ["-c", command],
+           cd: cwd,
+           stderr_to_stdout: true,
+           env: build_env(),
+           timeout: timeout
+         ) do
+      {_output, :timeout} -> {:error, :timeout}
+      {output, exit_code} -> {:ok, output, exit_code}
     end
+  rescue
+    error -> {:error, Exception.message(error)}
   end
 
   defp build_env do
@@ -119,52 +117,6 @@ defmodule Glossia.Agent.Tools.Bash do
       {"PAGER", "cat"},
       {"GIT_PAGER", "cat"}
     ]
-  end
-
-  defp build_invocation(command, [], _nix_executable, _opts) do
-    {:ok, {"bash", ["-c", command]}}
-  end
-
-  defp build_invocation(command, packages, nix_executable, opts) do
-    if Keyword.has_key?(opts, :runner) or nix_available?(nix_executable) do
-      normalized_packages = Enum.map(packages, &normalize_package/1)
-
-      {:ok, {nix_executable, ["shell" | normalized_packages] ++ ["--command", "bash", "-c", command]}}
-    else
-      {:error, "Nix is required when packages are specified, but `#{nix_executable}` was not found in PATH"}
-    end
-  end
-
-  defp nix_available?(nix_executable) do
-    if Path.type(nix_executable) == :absolute do
-      File.exists?(nix_executable)
-    else
-      :os.find_executable(String.to_charlist(nix_executable)) != false
-    end
-  end
-
-  defp normalize_package(package) do
-    package = String.trim(package)
-
-    if String.contains?(package, "#") do
-      package
-    else
-      "nixpkgs##{package}"
-    end
-  end
-
-  defp run_invocation(executable, args, cwd, timeout, env) do
-    case MuonTrap.cmd(executable, args,
-           cd: cwd,
-           stderr_to_stdout: true,
-           env: env,
-           timeout: timeout
-         ) do
-      {_output, :timeout} -> {:error, :timeout}
-      {output, exit_code} -> {:ok, output, exit_code}
-    end
-  rescue
-    error -> {:error, Exception.message(error)}
   end
 
   defp truncate_output(output) do

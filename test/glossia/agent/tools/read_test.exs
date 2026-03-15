@@ -45,10 +45,7 @@ defmodule Glossia.Agent.Tools.ReadTest do
 
   test "returns image content for image files", %{tmp_dir: tmp_dir} do
     path = Path.join(tmp_dir, "pixel.png")
-
-    png_data =
-      Base.decode64!("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2Z0AAAAASUVORK5CYII=")
-
+    png_data = Base.decode64!("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2Z0AAAAASUVORK5CYII=")
     File.write!(path, png_data)
 
     context = %{cwd: tmp_dir, opts: []}
