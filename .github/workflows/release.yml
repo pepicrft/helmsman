@@ -72,11 +72,11 @@ jobs:
           if [ -n "$latest_tag" ]; then
             next_version=$(elixir scripts/version.exs bump "$latest_tag" "$bump_type")
             git cliff --tag "$next_version" -o CHANGELOG.next.md
-            git cliff --tag "$next_version" --unreleased --strip header --strip footer -o RELEASE_NOTES.md
+            git cliff --tag "$next_version" --unreleased --strip all -o RELEASE_NOTES.md
           else
             next_version="$current_version"
             git cliff --tag "$next_version" -o CHANGELOG.next.md
-            git cliff --tag "$next_version" --strip header --strip footer -o RELEASE_NOTES.md
+            git cliff --tag "$next_version" --strip all -o RELEASE_NOTES.md
           fi
 
           echo "should_release=true" >> "$GITHUB_OUTPUT"
