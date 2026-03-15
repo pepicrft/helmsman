@@ -22,7 +22,6 @@ Rather than wrapping JavaScript agent frameworks, we built Helmsman from scratch
 - **Tool System**: Extensible tools for file operations, shell commands, and more
 - **Multi-Provider**: 18+ LLM providers via [ReqLLM](https://github.com/agentjido/req_llm) (Anthropic, OpenAI, Google, etc.)
 - **Telemetry**: Built-in observability with `:telemetry` events
-- **Composable**: Agents can delegate to other agents for complex workflows
 
 ## Installation
 
@@ -300,24 +299,6 @@ Helmsman.stream(agent, "Hello")
     :done -> IO.puts("\nDone")
   end
 end)
-```
-
-## Multi-Agent Workflows
-
-Agents can delegate to other agents:
-
-```elixir
-defmodule MyApp.Orchestrator do
-  use Helmsman
-
-  @impl true
-  def tools do
-    [
-      {Helmsman.Tools.Delegate, agent: MyApp.ResearchAgent},
-      {Helmsman.Tools.Delegate, agent: MyApp.WriterAgent}
-    ]
-  end
-end
 ```
 
 ## License
