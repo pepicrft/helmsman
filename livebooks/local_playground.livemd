@@ -1,5 +1,7 @@
 # Helmsman Local Playground
 
+## Section
+
 Open this notebook from a local checkout of Helmsman. The setup cell installs the library from the parent directory, so reevaluating it picks up local changes.
 
 ## Setup
@@ -102,6 +104,10 @@ provider_options =
   end)
 
 provider_input = Kino.Input.select("Provider", provider_options)
+provider_input
+```
+
+```elixir
 selected_provider = Kino.Input.read(provider_input)
 
 provider_details =
@@ -142,6 +148,13 @@ cwd_input =
     default: HelmsmanLivebook.repo_root()
   )
 
+Kino.Layout.grid(
+  [model_input, api_key_input, system_prompt_input, cwd_input],
+  columns: 1
+)
+```
+
+```elixir
 selected_model = Kino.Input.read(model_input)
 
 Kino.Markdown.new("""
