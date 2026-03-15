@@ -100,7 +100,7 @@ Pick a provider first. Then reevaluate the next cell to refresh the model list f
 ```elixir
 provider_options =
   Enum.map(providers, fn provider ->
-    {"#{provider.provider} (#{provider.model_count} passing models, #{provider.env_key})", provider.provider}
+    {provider.provider, "#{provider.provider} (#{provider.model_count} passing models, #{provider.env_key})"}
   end)
 
 provider_input = Kino.Input.select("Provider", provider_options)
@@ -127,7 +127,7 @@ models = HelmsmanLivebook.models_for(selected_provider)
 
 model_options =
   Enum.map(models, fn model ->
-    {"#{model.model} (checked #{model.last_checked})", model.model}
+    {model.model, "#{model.model} (checked #{model.last_checked})"}
   end)
 
 model_input = Kino.Input.select("Model", model_options)
