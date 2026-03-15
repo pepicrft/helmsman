@@ -81,7 +81,7 @@ defmodule Helmsman.MixProject do
       links: %{
         "GitHub" => @source_url
       },
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
+      files: ~w(lib .formatter.exs mix.exs README.md LICENSE MIT.md)
     ]
   end
 

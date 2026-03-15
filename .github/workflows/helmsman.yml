@@ -1,0 +1,90 @@
+name: Helmsman
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Compile without warnings
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install BEAM tooling with mise
+        uses: jdx/mise-action@v3
+        with:
+          cache: true
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Fetch dependencies
+        run: mix deps.get
+
+      - name: Compile dependencies
+        run: mix deps.compile
+
+      - name: Compile without warnings
+        run: mix compile --warnings-as-errors
+
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install BEAM tooling with mise
+        uses: jdx/mise-action@v3
+        with:
+          cache: true
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Fetch dependencies
+        run: mix deps.get
+
+      - name: Run test suite
+        run: mix test
+
+  format:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install BEAM tooling with mise
+        uses: jdx/mise-action@v3
+        with:
+          cache: true
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Fetch dependencies
+        run: mix deps.get
+
+      - name: Compile formatter dependencies
+        run: mix deps.compile
+
+      - name: Check formatting
+        run: mix format --check-formatted
