@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release to Hex.pm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, '[Release]')
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install tooling with mise
+        uses: jdx/mise-action@v3
+        with:
+          cache: true
+
+      - name: Install Hex and Rebar
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+
+      - name: Fetch dependencies
+        run: mix deps.get
+
+      - name: Plan release
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_version=$(elixir scripts/version.exs current)
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+
+          if [ -n "$latest_tag" ]; then
+            git cliff --context --unreleased > release-context.json
+          else
+            git cliff --context > release-context.json
+          fi
+
+          releaseable_count=$(jq 'if length == 0 then 0 else .[0].commits | length end' release-context.json)
+
+          if [ "$releaseable_count" -eq 0 ]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if jq -e '.[0].commits[] | select(.message | test("BREAKING CHANGE|!:"))' release-context.json > /dev/null; then
+            bump_type=major
+          elif jq -e '.[0].commits[] | select(.group == "Features")' release-context.json > /dev/null; then
+            bump_type=minor
+          else
+            bump_type=patch
+          fi
+
+          if [ -n "$latest_tag" ]; then
+            next_version=$(elixir scripts/version.exs bump "$latest_tag" "$bump_type")
+            git cliff --tag "$next_version" -o CHANGELOG.next.md
+            git cliff --tag "$next_version" --unreleased --strip header --strip footer -o RELEASE_NOTES.md
+          else
+            next_version="$current_version"
+            git cliff --tag "$next_version" -o CHANGELOG.next.md
+            git cliff --tag "$next_version" --strip header --strip footer -o RELEASE_NOTES.md
+          fi
+
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+          echo "current_version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "next_version=$next_version" >> "$GITHUB_OUTPUT"
+          echo "bump_type=$bump_type" >> "$GITHUB_OUTPUT"
+
+      - name: Update version and changelog
+        if: steps.plan.outputs.should_release == 'true'
+        run: |
+          elixir scripts/version.exs set "${{ steps.plan.outputs.next_version }}"
+          mv CHANGELOG.next.md CHANGELOG.md
+
+      - name: Validate Hex package
+        if: steps.plan.outputs.should_release == 'true'
+        run: |
+          build_dir="$(mktemp -d /tmp/helmsman-hex-build-XXXXXX)"
+          mix hex.build --unpack -o "$build_dir"
+
+      - name: Publish release
+        id: publish
+        if: steps.plan.outputs.should_release == 'true'
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${HEX_API_KEY:?HEX_API_KEY secret is required}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add mix.exs CHANGELOG.md
+          git commit -m "[Release] Helmsman ${{ steps.plan.outputs.next_version }}"
+          git tag -a "${{ steps.plan.outputs.next_version }}" -m "${{ steps.plan.outputs.next_version }}"
+
+          mix hex.publish package --yes
+
+          git push origin HEAD:main
+          git push origin "${{ steps.plan.outputs.next_version }}"
+
+          echo "release_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: steps.plan.outputs.should_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.plan.outputs.next_version }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "${{ steps.publish.outputs.release_commit }}" \
+            --title "${{ steps.plan.outputs.next_version }}" \
+            --notes-file RELEASE_NOTES.md

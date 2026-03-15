@@ -46,7 +46,7 @@ defmodule Helmsman.MixProject do
       {:ex_doc, "~> 0.35", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:mox, "~> 1.1", only: :test}
+      {:mimic, "~> 2.0", only: :test}
     ]
   end
 
@@ -54,7 +54,7 @@ defmodule Helmsman.MixProject do
     [
       main: "Helmsman",
       extras: ["README.md"],
-      source_ref: "v#{@version}",
+      source_ref: @version,
       source_url: @source_url,
       groups_for_modules: [
         Core: [
@@ -81,7 +81,7 @@ defmodule Helmsman.MixProject do
       links: %{
         "GitHub" => @source_url
       },
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE MIT.md)
+      files: ~w(lib .formatter.exs mix.exs README.md CHANGELOG.md LICENSE MIT.md)
     ]
   end
 

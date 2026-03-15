@@ -42,22 +42,6 @@ defmodule Helmsman do
       end)
       |> Stream.run()
 
-  ## Multi-Agent Workflows
-
-  Agents can delegate to other agents:
-
-      defmodule MyApp.Orchestrator do
-        use Helmsman
-
-        @impl true
-        def tools do
-          [
-            {Helmsman.Tools.Delegate, agent: MyApp.ResearchAgent},
-            {Helmsman.Tools.Delegate, agent: MyApp.WriterAgent}
-          ]
-        end
-      end
-
   ## Core Concepts
 
   - **Session** - A GenServer managing conversation state and the agent loop
