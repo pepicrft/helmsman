@@ -44,13 +44,13 @@ defmodule Glossia.Agent.Tools.EditTest do
     assert String.contains?(error, "not found")
   end
 
-  test "replaces only first occurrence", %{tmp_dir: tmp_dir} do
+  test "returns error when text appears multiple times", %{tmp_dir: tmp_dir} do
     path = Path.join(tmp_dir, "multi.txt")
     File.write!(path, "foo bar foo bar")
 
     context = %{cwd: tmp_dir, opts: []}
 
-    {:ok, _result} =
+    {:error, error} =
       Edit.call(
         %{
           "path" => "multi.txt",
@@ -60,6 +60,27 @@ defmodule Glossia.Agent.Tools.EditTest do
         context
       )
 
-    assert File.read!(path) == "baz bar foo bar"
+    assert String.contains?(error, "Found 2 occurrences")
+    assert File.read!(path) == "foo bar foo bar"
+  end
+
+  test "returns error when replacement produces identical content", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "same.txt")
+    File.write!(path, "Hello, World!")
+
+    context = %{cwd: tmp_dir, opts: []}
+
+    {:error, error} =
+      Edit.call(
+        %{
+          "path" => "same.txt",
+          "old_text" => "World",
+          "new_text" => "World"
+        },
+        context
+      )
+
+    assert String.contains?(error, "No changes made")
+    assert File.read!(path) == "Hello, World!"
   end
 end

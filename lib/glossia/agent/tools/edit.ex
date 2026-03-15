@@ -15,8 +15,8 @@ defmodule Glossia.Agent.Tools.Edit do
 
   - The match is exact and case-sensitive
   - Whitespace and indentation must match exactly
-  - Only the first occurrence is replaced
-  - For multiple replacements, make multiple tool calls
+  - The target text must appear exactly once
+  - For multiple replacements, provide more context to make each match unique
   """
 
   use Glossia.Agent.Tool
@@ -62,22 +62,16 @@ defmodule Glossia.Agent.Tools.Edit do
 
     case File.read(absolute_path) do
       {:ok, content} ->
-        if String.contains?(content, old_text) do
-          # Replace only the first occurrence
-          new_content = String.replace(content, old_text, new_text, global: false)
+        case count_occurrences(content, old_text) do
+          0 ->
+            {:error, find_similar_text(content, old_text, path)}
 
-          case File.write(absolute_path, new_content) do
-            :ok ->
-              diff = generate_diff(old_text, new_text)
+          1 ->
+            apply_edit(content, old_text, new_text, absolute_path, path)
 
-              {:ok, Enum.join(["Successfully edited #{path}", diff], "\n\n")}
-
-            {:error, reason} ->
-              {:error, "Cannot write to #{path}: #{inspect(reason)}"}
-          end
-        else
-          # Try to provide helpful feedback
-          {:error, find_similar_text(content, old_text, path)}
+          count ->
+            {:error,
+             "Found #{count} occurrences of old_text in #{path}. Make the match unique by including more surrounding context."}
         end
 
       {:error, :enoent} ->
@@ -93,6 +87,35 @@ defmodule Glossia.Agent.Tools.Edit do
       path
     else
       Path.join(cwd, path)
+    end
+  end
+
+  defp count_occurrences(content, old_text) do
+    content
+    |> String.split(old_text)
+    |> length()
+    |> Kernel.-(1)
+  end
+
+  defp apply_edit(content, old_text, new_text, absolute_path, path) do
+    {index, old_text_length} = :binary.match(content, old_text)
+
+    new_content =
+      binary_part(content, 0, index) <>
+        new_text <>
+        binary_part(content, index + old_text_length, byte_size(content) - index - old_text_length)
+
+    if new_content == content do
+      {:error, "No changes made to #{path}. The replacement produced identical content."}
+    else
+      case File.write(absolute_path, new_content) do
+        :ok ->
+          diff = generate_diff(old_text, new_text)
+          {:ok, Enum.join(["Successfully edited #{path}", diff], "\n\n")}
+
+        {:error, reason} ->
+          {:error, "Cannot write to #{path}: #{inspect(reason)}"}
+      end
     end
   end
 
