@@ -1,8 +1,25 @@
 # Helmsman Local Playground
 
-## Section
-
 Open this notebook from a local checkout of Helmsman. The setup cell installs the library from the parent directory, so reevaluating it picks up local changes.
+
+## What You Will Do
+
+This notebook is a guided playground for Helmsman. By the end you will:
+
+1. Load the local checkout into Livebook.
+2. Pick a ReqLLM provider and model.
+3. Start a `NotebookAgent` with a system prompt and working directory.
+4. Run one prompt synchronously.
+5. Stream one prompt and watch events arrive live.
+
+## How To Use It
+
+Work from top to bottom.
+
+- Evaluate the setup cell first.
+- When a cell renders an input, pick a value in the UI before evaluating the next cell.
+- If you change provider, model, API key, or system prompt, reevaluate the cells below that point.
+- If you edit the local Helmsman checkout, reevaluate the setup cell to reload the dependency.
 
 ## Setup
 
@@ -16,6 +33,8 @@ Mix.install([
 ```
 
 ## Catalog
+
+This section builds a small provider catalog from ReqLLM's supported-model registry. The notebook only shows providers that expose a straightforward API key env var, because this is meant to be a simple local playground.
 
 ```elixir
 defmodule HelmsmanLivebook do
@@ -95,7 +114,7 @@ The interactive runtime form below includes the ReqLLM providers that expose a d
 
 ## Runtime
 
-Pick a provider first. Then reevaluate the next cell to refresh the model list for that provider.
+Start by choosing a provider. After changing it, reevaluate the next cell so the model list and API key guidance match your selection.
 
 ```elixir
 provider_options =
@@ -121,6 +140,8 @@ Selected provider: `#{selected_provider}`
 ReqLLM default API key env var: `#{provider_details.env_key}`
 """)
 ```
+
+Now choose the concrete model and runtime settings for the session.
 
 ```elixir
 models = HelmsmanLivebook.models_for(selected_provider)
@@ -165,6 +186,8 @@ Leave the API key blank if you want ReqLLM to read `#{provider_details.env_key}`
 ```
 
 ## Agent
+
+This defines a minimal local agent that exposes the standard coding tools. The next cell starts or restarts it with the selections you made above.
 
 ```elixir
 defmodule NotebookAgent do
@@ -212,6 +235,8 @@ agent
 
 ## Run
 
+Use this section when you want the final answer only.
+
 ```elixir
 prompt_input =
   Kino.Input.textarea(
@@ -233,6 +258,8 @@ end
 
 ## Stream
 
+Use this section when you want to watch the response evolve in real time, including tool calls and tool results.
+
 ```elixir
 prompt = Kino.Input.read(prompt_input)
 
@@ -240,27 +267,71 @@ frame =
   Kino.Frame.new()
   |> Kino.render()
 
+render =
+  fn transcript ->
+    Kino.Frame.render(frame, Kino.Markdown.new(transcript))
+  end
+
 Helmsman.stream(NotebookAgent, prompt, timeout: 120_000)
-|> Enum.each(fn
-  {:text, chunk} ->
-    Kino.Frame.append(frame, chunk)
+|> Enum.reduce("", fn
+  {:text, chunk}, transcript ->
+    updated = transcript <> chunk
+    render.(updated)
+    updated
 
-  {:thinking, chunk} ->
-    Kino.Frame.append(frame, "\n\n[thinking] #{chunk}")
+  {:thinking, chunk}, transcript ->
+    updated = transcript <> "\n\n> thinking: #{chunk}\n"
+    render.(updated)
+    updated
 
-  {:tool_call, name, _id, _args} ->
-    Kino.Frame.append(frame, "\n\n[tool] calling #{name}\n")
+  {:tool_call, name, _id, args}, transcript ->
+    updated =
+      transcript <>
+        """
 
-  {:tool_result, _id, result} ->
-    Kino.Frame.append(frame, "\n\n[result] #{inspect(result, pretty: true)}\n")
+        ---
+        **Tool call:** `#{name}`
 
-  {:error, reason} ->
-    Kino.Frame.append(frame, "\n\n[error] #{inspect(reason)}\n")
+        ```elixir
+        #{inspect(args, pretty: true, limit: :infinity)}
+        ```
+        """
 
-  :done ->
-    Kino.Frame.append(frame, "\n\n[done]\n")
+    render.(updated)
+    updated
 
-  _ ->
-    :ok
+  {:tool_result, _id, result}, transcript ->
+    body =
+      case result do
+        value when is_binary(value) -> value
+        value -> inspect(value, pretty: true, limit: :infinity)
+      end
+
+    updated =
+      transcript <>
+        """
+
+        **Tool result**
+
+        ````text
+        #{body}
+        ````
+        """
+
+    render.(updated)
+    updated
+
+  {:error, reason}, transcript ->
+    updated = transcript <> "\n\n**Error:** `#{inspect(reason)}`\n"
+    render.(updated)
+    updated
+
+  :done, transcript ->
+    updated = transcript <> "\n\n---\nDone.\n"
+    render.(updated)
+    updated
+
+  _event, transcript ->
+    transcript
 end)
 ```
