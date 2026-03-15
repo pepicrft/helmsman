@@ -8,6 +8,7 @@ Open this notebook from a local checkout of Helmsman. The setup cell installs th
 repo_root = Path.expand("..", __DIR__)
 
 Mix.install([
+  {:kino, "~> 0.19"},
   {:helmsman, path: repo_root}
 ])
 ```
