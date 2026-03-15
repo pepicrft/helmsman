@@ -1,0 +1,225 @@
+# Helmsman Local Playground
+
+## Section
+
+Open this notebook from a local checkout of Helmsman. The setup cell installs the library from the parent directory, so reevaluating it picks up local changes.
+
+## Setup
+
+```elixir
+repo_root = Path.expand("..", __DIR__)
+
+Mix.install([
+  {:helmsman, path: repo_root}
+])
+```
+
+## Catalog
+
+```elixir
+defmodule HelmsmanLivebook do
+  @preferred_providers ~w(anthropic openai google groq openrouter xai)
+
+  def repo_root do
+    Path.expand("..", __DIR__)
+  end
+
+  def providers do
+    passing_models()
+    |> Enum.group_by(& &1.provider)
+    |> Enum.map(fn {provider, models} ->
+      %{
+        provider: provider,
+        env_key: hd(models).env_key,
+        model_count: length(models)
+      }
+    end)
+    |> Enum.sort_by(fn %{provider: provider} ->
+      preferred_index(provider)
+    end)
+  end
+
+  def models_for(provider) do
+    passing_models()
+    |> Enum.filter(&(&1.provider == provider))
+    |> Enum.sort_by(& &1.model)
+  end
+
+  defp passing_models do
+    supported_models()
+    |> Enum.filter(fn {_spec, meta} -> meta["status"] == "pass" end)
+    |> Enum.map(fn {spec, meta} ->
+      [provider, _model_id] = String.split(spec, ":", parts: 2)
+      provider_atom = String.to_atom(provider)
+
+      %{
+        provider: provider,
+        env_key: ReqLLM.Providers.get_env_key(provider_atom),
+        model: spec,
+        last_checked: meta["last_checked"]
+      }
+    end)
+    |> Enum.filter(& &1.env_key)
+  end
+
+  defp supported_models do
+    :req_llm
+    |> :code.priv_dir()
+    |> to_string()
+    |> Path.join("supported_models.json")
+    |> File.read!()
+    |> Jason.decode!()
+  end
+
+  defp preferred_index(provider) do
+    case Enum.find_index(@preferred_providers, &(&1 == provider)) do
+      nil -> {1, provider}
+      index -> {0, index}
+    end
+  end
+end
+
+providers = HelmsmanLivebook.providers()
+```
+
+```elixir
+Kino.DataTable.new(providers)
+```
+
+The interactive runtime form below includes the ReqLLM providers that expose a default API key env var. Providers that require a different authentication flow are intentionally left out of the picker.
+
+## Runtime
+
+Pick a provider first. Then reevaluate the next cell to refresh the model list for that provider.
+
+```elixir
+provider_options =
+  Enum.map(providers, fn provider ->
+    {"#{provider.provider} (#{provider.model_count} passing models, #{provider.env_key})", provider.provider}
+  end)
+
+provider_input = Kino.Input.select("Provider", provider_options)
+selected_provider = Kino.Input.read(provider_input)
+
+provider_details =
+  Enum.find(providers, fn provider ->
+    provider.provider == selected_provider
+  end)
+
+Kino.Markdown.new("""
+Selected provider: `#{selected_provider}`
+
+ReqLLM default API key env var: `#{provider_details.env_key}`
+""")
+```
+
+```elixir
+models = HelmsmanLivebook.models_for(selected_provider)
+
+model_options =
+  Enum.map(models, fn model ->
+    {"#{model.model} (checked #{model.last_checked})", model.model}
+  end)
+
+model_input = Kino.Input.select("Model", model_options)
+api_key_input = Kino.Input.password("API key")
+
+system_prompt_input =
+  Kino.Input.textarea(
+    "System prompt",
+    default: """
+    You are testing Helmsman from a local Livebook.
+    Be explicit about which tools you use and why.
+    """
+  )
+
+cwd_input =
+  Kino.Input.text(
+    "Tool working directory",
+    default: HelmsmanLivebook.repo_root()
+  )
+
+selected_model = Kino.Input.read(model_input)
+
+Kino.Markdown.new("""
+Selected model: `#{selected_model}`
+
+Leave the API key blank if you want ReqLLM to read `#{provider_details.env_key}` from the environment instead.
+""")
+```
+
+## Agent
+
+```elixir
+defmodule NotebookAgent do
+  use Helmsman
+
+  @impl true
+  def tools do
+    Helmsman.Tools.coding_tools()
+  end
+end
+```
+
+```elixir
+if pid = Process.whereis(NotebookAgent) do
+  Process.exit(pid, :kill)
+  Process.sleep(50)
+end
+
+api_key =
+  api_key_input
+  |> Kino.Input.read()
+  |> String.trim()
+
+start_link_opts =
+  [
+    name: NotebookAgent,
+    model: selected_model,
+    system_prompt: Kino.Input.read(system_prompt_input),
+    cwd: Kino.Input.read(cwd_input)
+  ] ++
+    if(api_key == "", do: [], else: [api_key: api_key])
+
+{:ok, agent} = NotebookAgent.start_link(start_link_opts)
+
+Kino.Markdown.new("""
+Started `NotebookAgent`
+
+- model: `#{selected_model}`
+- cwd: `#{Kino.Input.read(cwd_input)}`
+- provider: `#{selected_provider}`
+""")
+
+agent
+```
+
+## Run
+
+```elixir
+prompt_input =
+  Kino.Input.textarea(
+    "Prompt",
+    default: """
+    Read README.md and summarize Helmsman's public API in 5 bullet points.
+    """
+  )
+```
+
+```elixir
+prompt = Kino.Input.read(prompt_input)
+
+case Helmsman.run(NotebookAgent, prompt, timeout: 120_000) do
+  {:ok, response} -> Kino.Markdown.new(response)
+  {:error, reason} -> Kino.Markdown.new("Run failed: `#{inspect(reason)}`")
+end
+```
+
+## Stream
+
+```elixir
+prompt = Kino.Input.read(prompt_input)
+
+Helmsman.stream(NotebookAgent, prompt, timeout: 120_000)
+|> Enum.to_list()
+```
