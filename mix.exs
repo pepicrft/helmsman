@@ -23,8 +23,7 @@ defmodule Helmsman.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
-      mod: {Helmsman.Application, []}
+      extra_applications: [:logger]
     ]
   end
 
