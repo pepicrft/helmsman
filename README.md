@@ -6,14 +6,14 @@ Helmsman treats AI agents as first-class OTP processes that can reason, use tool
 
 ## Motivation
 
-Helmsman started at [Glossia](https://glossia.ai) to power our agentic workflows. We needed a framework that:
+Helmsman grew out of practical work building agentic workflows. We needed a framework that:
 
 - Integrates naturally with OTP supervision trees
 - Supports streaming for responsive user experiences
 - Works with multiple LLM providers without vendor lock-in
 - Provides extensible tooling for domain-specific capabilities
 
-Rather than wrapping JavaScript agent frameworks, we built Helmsman from scratch using idiomatic Elixir patterns. We're sharing it with the community because we believe Elixir is an excellent fit for building reliable AI agents.
+Rather than wrapping JavaScript agent frameworks, we built Helmsman from scratch using idiomatic Elixir patterns. We are sharing it because Elixir is an excellent fit for building reliable AI agents.
 
 ## Features
 
@@ -31,7 +31,7 @@ Add `helmsman` to your dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:helmsman, github: "pepicrft/helmsman"}
+    {:helmsman, "~> 0.1.0"}
   ]
 end
 ```
@@ -103,7 +103,7 @@ Helmsman works well in LiveBook notebooks with `Mix.install/1`:
 
 ```elixir
 Mix.install([
-  {:helmsman, github: "pepicrft/helmsman"}
+  {:helmsman, "~> 0.1.0"}
 ])
 
 Application.put_env(:helmsman, :api_key, System.fetch_env!("ANTHROPIC_API_KEY"))
