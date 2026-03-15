@@ -1,10 +1,16 @@
-# Helmsman
+# Helmsman ⚓
+
+[![Hex.pm](https://img.shields.io/hexpm/v/helmsman.svg)](https://hex.pm/packages/helmsman)
+[![HexDocs](https://img.shields.io/badge/docs-hexdocs-blue.svg)](https://hexdocs.pm/helmsman/)
+[![CI](https://github.com/pepicrft/helmsman/actions/workflows/helmsman.yml/badge.svg)](https://github.com/pepicrft/helmsman/actions/workflows/helmsman.yml)
 
 A framework for building AI agents in Elixir.
 
+Install it from [Hex.pm](https://hex.pm/packages/helmsman) and browse the guides on [HexDocs](https://hexdocs.pm/helmsman/).
+
 Helmsman treats AI agents as first-class OTP processes that can reason, use tools, and orchestrate complex workflows. Built on Erlang/OTP primitives for reliability and concurrency.
 
-## Motivation
+## Motivation 💡
 
 Helmsman grew out of practical work building agentic workflows. We needed a framework that:
 
@@ -15,7 +21,7 @@ Helmsman grew out of practical work building agentic workflows. We needed a fram
 
 Rather than wrapping JavaScript agent frameworks, we built Helmsman from scratch using idiomatic Elixir patterns. We are sharing it because Elixir is an excellent fit for building reliable AI agents.
 
-## Features
+## Features ✨
 
 - **OTP-native**: Agents are GenServers that integrate naturally with supervision trees
 - **Streaming**: Real-time event streaming for responsive UIs
@@ -23,7 +29,7 @@ Rather than wrapping JavaScript agent frameworks, we built Helmsman from scratch
 - **Multi-Provider**: 18+ LLM providers via [ReqLLM](https://github.com/agentjido/req_llm) (Anthropic, OpenAI, Google, etc.)
 - **Telemetry**: Built-in observability with `:telemetry` events
 
-## Installation
+## Installation 📦
 
 Add `helmsman` to your dependencies in `mix.exs`:
 
@@ -35,7 +41,7 @@ def deps do
 end
 ```
 
-## Quick Start
+## Quick Start 🚀
 
 ### 1. Define an Agent
 
@@ -96,7 +102,7 @@ defmodule MyApp.Application do
 end
 ```
 
-## LiveBook
+## LiveBook 📓
 
 Helmsman works well in LiveBook notebooks with `Mix.install/1`:
 
@@ -129,7 +135,7 @@ response
 
 For richer notebook output, you can stream events and render them with LiveBook/Kino cells as they arrive.
 
-## Configuration
+## Configuration ⚙️
 
 ### API Keys
 
@@ -178,7 +184,7 @@ Thanks to [ReqLLM](https://github.com/agentjido/req_llm), Helmsman supports 18+ 
 | xAI | `xai:grok-3` |
 | And 12+ more... | See [ReqLLM docs](https://hexdocs.pm/req_llm) |
 
-## Built-in Tools
+## Built-in Tools 🧰
 
 ### Default Tool Sets
 
@@ -199,7 +205,7 @@ def tools, do: Helmsman.Tools.read_only_tools()
 | `Helmsman.Tools.Edit` | Surgical file edits (find & replace) |
 | `Helmsman.Tools.Write` | Create or overwrite files |
 
-## Custom Tools
+## Custom Tools 🛠️
 
 Define custom tools by implementing the `Helmsman.Tool` behaviour:
 
@@ -234,7 +240,7 @@ defmodule MyApp.Tools.Weather do
 end
 ```
 
-## Events and Callbacks
+## Events and Callbacks 📡
 
 Handle events during agent execution:
 
