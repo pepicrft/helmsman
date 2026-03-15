@@ -1,5 +1,7 @@
 # Helmsman Local Playground
 
+## Section
+
 Open this notebook from a local checkout of Helmsman. The setup cell installs the library from the parent directory, so reevaluating it picks up local changes.
 
 ## What You Will Do
@@ -16,10 +18,10 @@ This notebook is a guided playground for Helmsman. By the end you will:
 
 Work from top to bottom.
 
-- Evaluate the setup cell first.
-- When a cell renders an input, pick a value in the UI before evaluating the next cell.
-- If you change provider, model, API key, or system prompt, reevaluate the cells below that point.
-- If you edit the local Helmsman checkout, reevaluate the setup cell to reload the dependency.
+* Evaluate the setup cell first.
+* When a cell renders an input, pick a value in the UI before evaluating the next cell.
+* If you change provider, model, API key, or system prompt, reevaluate the cells below that point.
+* If you edit the local Helmsman checkout, reevaluate the setup cell to reload the dependency.
 
 ## Setup
 
@@ -88,7 +90,7 @@ defmodule HelmsmanLivebook do
     |> to_string()
     |> Path.join("supported_models.json")
     |> File.read!()
-    |> Jason.decode!()
+    |> JSON.decode!()
   end
 
   defp preferred_index(provider) do
@@ -260,7 +262,7 @@ end
 
 Use this section when you want to watch the response evolve in real time, including tool calls and tool results.
 
-```elixir
+`````elixir
 prompt = Kino.Input.read(prompt_input)
 
 frame =
@@ -334,4 +336,4 @@ Helmsman.stream(NotebookAgent, prompt, timeout: 120_000)
   _event, transcript ->
     transcript
 end)
-```
+`````
