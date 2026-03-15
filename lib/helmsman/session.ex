@@ -24,6 +24,7 @@ defmodule Helmsman.Session do
   use GenServer
 
   alias Helmsman.{Message, Telemetry, Tool}
+  alias ReqLLM.ToolCall
 
   require Logger
 
@@ -513,36 +514,29 @@ defmodule Helmsman.Session do
   end
 
   defp response_to_message(response) do
-    # Extract tool calls if present
-    tool_calls =
-      case response.tool_calls do
-        nil ->
-          []
-
-        calls ->
-          Enum.map(calls, fn call ->
-            {:tool_call, call.id, call.name, call.arguments}
-          end)
+    thinking_blocks =
+      case ReqLLM.Response.thinking(response) do
+        nil -> []
+        "" -> []
+        thinking -> [{:thinking, thinking}]
       end
 
-    # Extract text content
     text_blocks =
-      case response.content do
-        nil ->
-          []
-
-        content when is_binary(content) ->
-          [{:text, content}]
-
-        content when is_list(content) ->
-          Enum.map(content, fn
-            %{type: :text, text: text} -> {:text, text}
-            %{type: "text", text: text} -> {:text, text}
-            other -> {:text, inspect(other)}
-          end)
+      case ReqLLM.Response.text(response) do
+        nil -> []
+        "" -> []
+        text -> [{:text, text}]
       end
 
-    blocks = text_blocks ++ tool_calls
+    tool_calls =
+      response
+      |> ReqLLM.Response.tool_calls()
+      |> Enum.map(fn call ->
+        normalized = ToolCall.from_map(call)
+        {:tool_call, normalized.id, normalized.name, normalized.arguments}
+      end)
+
+    blocks = thinking_blocks ++ text_blocks ++ tool_calls
 
     if blocks == [] do
       Message.assistant("")
