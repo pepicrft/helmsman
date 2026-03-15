@@ -8,6 +8,7 @@ defmodule Glossia.Agent.Tools.Bash do
   ## Parameters
 
   - `command` - The bash command to execute
+  - `cwd` - Directory to run the command in (optional)
   - `timeout` - Timeout in seconds (optional, default: 120)
 
   ## Safety
@@ -30,8 +31,9 @@ defmodule Glossia.Agent.Tools.Bash do
     """
     Execute a bash command in the current working directory. Returns stdout and stderr.
     Output is truncated to #{@max_lines} lines or #{div(@max_bytes, 1024)}KB.
-    Optionally provide a timeout in seconds.
+    Optionally provide a cwd and timeout in seconds.
     """
+    |> String.trim()
   end
 
   @impl true
@@ -42,6 +44,10 @@ defmodule Glossia.Agent.Tools.Bash do
         command: %{
           type: "string",
           description: "Bash command to execute"
+        },
+        cwd: %{
+          type: "string",
+          description: "Directory to run the command in (relative or absolute)"
         },
         timeout: %{
           type: "number",
@@ -54,26 +60,22 @@ defmodule Glossia.Agent.Tools.Bash do
 
   @impl true
   def call(%{"command" => command} = args, context) do
-    cwd = context[:cwd] || File.cwd!()
+    base_cwd = context[:cwd] || File.cwd!()
+    cwd = resolve_cwd(args["cwd"], base_cwd)
     timeout = trunc((args["timeout"] || div(@default_timeout, 1000)) * 1000)
 
     case execute_command(command, cwd, timeout) do
       {:ok, output, exit_code} ->
-        {truncated_output, was_truncated} = truncate_output(output)
+        {truncated_output, truncated?} = truncate_output(output)
 
         result =
-          if was_truncated do
-            "#{truncated_output}\n\n(output truncated)"
-          else
-            truncated_output
-          end
-
-        result =
-          if exit_code != 0 do
-            "#{result}\n\n(exit code: #{exit_code})"
-          else
-            result
-          end
+          [
+            truncated_output,
+            truncated? && "(output truncated)",
+            exit_code != 0 && "(exit code: #{exit_code})"
+          ]
+          |> Enum.reject(&(&1 in [false, nil, ""]))
+          |> Enum.join("\n\n")
 
         {:ok, result}
 
@@ -85,24 +87,31 @@ defmodule Glossia.Agent.Tools.Bash do
     end
   end
 
-  defp execute_command(command, cwd, timeout) do
-    try do
-      case MuonTrap.cmd("bash", ["-c", command],
-             cd: cwd,
-             stderr_to_stdout: true,
-             env: build_env(),
-             timeout: timeout
-           ) do
-        {_output, :timeout} -> {:error, :timeout}
-        {output, exit_code} -> {:ok, output, exit_code}
-      end
-    rescue
-      e -> {:error, Exception.message(e)}
+  defp resolve_cwd(nil, cwd), do: cwd
+
+  defp resolve_cwd(path, cwd) do
+    if Path.type(path) == :absolute do
+      path
+    else
+      Path.expand(path, cwd)
     end
   end
 
+  defp execute_command(command, cwd, timeout) do
+    case MuonTrap.cmd("bash", ["-c", command],
+           cd: cwd,
+           stderr_to_stdout: true,
+           env: build_env(),
+           timeout: timeout
+         ) do
+      {_output, :timeout} -> {:error, :timeout}
+      {output, exit_code} -> {:ok, output, exit_code}
+    end
+  rescue
+    error -> {:error, Exception.message(error)}
+  end
+
   defp build_env do
-    # Inherit current environment with some safety additions
     [
       {"TERM", "dumb"},
       {"PAGER", "cat"},

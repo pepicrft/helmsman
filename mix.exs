@@ -6,14 +6,14 @@ defmodule Glossia.Agent.MixProject do
 
   def project do
     [
-      app: :glossia_agent,
+      app: :agent,
       version: @version,
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       docs: docs(),
       package: package(),
-      name: "Glossia.Agent",
+      name: "Agent",
       description: "A framework for building AI agents in Elixir",
       source_url: @source_url,
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -28,7 +28,7 @@ defmodule Glossia.Agent.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:test), do: ["lib"]
   defp elixirc_paths(_), do: ["lib"]
 
   defp deps do
@@ -43,6 +43,7 @@ defmodule Glossia.Agent.MixProject do
       {:telemetry, "~> 1.0"},
 
       # Development & Testing
+      {:quokka, "~> 2.12", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -53,7 +54,7 @@ defmodule Glossia.Agent.MixProject do
   defp docs do
     [
       main: "Glossia.Agent",
-      extras: ["README.md", "CHANGELOG.md"],
+      extras: ["README.md"],
       source_ref: "v#{@version}",
       source_url: @source_url,
       groups_for_modules: [
@@ -81,7 +82,7 @@ defmodule Glossia.Agent.MixProject do
       links: %{
         "GitHub" => @source_url
       },
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
+      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
     ]
   end
 

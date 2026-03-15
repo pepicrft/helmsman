@@ -23,7 +23,7 @@ defmodule Glossia.Agent.Session do
 
   use GenServer
 
-  alias Glossia.Agent.{Message, Tool, Telemetry}
+  alias Glossia.Agent.{Message, Telemetry, Tool}
 
   require Logger
 
@@ -53,19 +53,29 @@ defmodule Glossia.Agent.Session do
 
   @doc false
   def start_link(agent_module, opts) do
+    config = Keyword.get(opts, :config, [])
+    opts = Keyword.delete(opts, :config)
     {gen_opts, agent_opts} = Keyword.split(opts, [:name])
 
-    # Get defaults from module, allow override via opts
     agent_opts =
       agent_opts
       |> Keyword.put_new(:agent_module, agent_module)
-      |> Keyword.put_new(:model, agent_module.model())
-      |> Keyword.put_new(:thinking_level, agent_module.thinking_level())
-      |> Keyword.put_new_lazy(:system_prompt, fn -> agent_module.system_prompt() end)
+      |> put_configured_opt(config, :api_key)
+      |> put_configured_opt(config, :model, fn -> agent_module.model() end)
+      |> put_configured_opt(config, :thinking_level, fn -> agent_module.thinking_level() end)
+      |> put_configured_opt(config, :system_prompt, fn -> agent_module.system_prompt() end)
       |> Keyword.put_new(:tools, agent_module.tools())
-      |> Keyword.put_new(:cwd, File.cwd!())
+      |> put_configured_opt(config, :cwd, &File.cwd!/0)
 
     GenServer.start_link(__MODULE__, agent_opts, gen_opts)
+  end
+
+  defp put_configured_opt(opts, config, key, default_fun \\ fn -> nil end) do
+    Keyword.put_new_lazy(opts, key, fn ->
+      Keyword.get_lazy(config, key, fn ->
+        Application.get_env(:agent, key, default_fun.())
+      end)
+    end)
   end
 
   @doc """
@@ -223,9 +233,15 @@ defmodule Glossia.Agent.Session do
       abort_ref = state.abort_ref
 
       Task.start(fn ->
-        do_stream(state, prompt, opts, fn event ->
-          GenServer.cast(parent, {:broadcast_event, event, subscriber_ref})
-        end, abort_ref)
+        do_stream(
+          state,
+          prompt,
+          opts,
+          fn event ->
+            GenServer.cast(parent, {:broadcast_event, event, subscriber_ref})
+          end,
+          abort_ref
+        )
 
         GenServer.cast(parent, {:stream_complete, subscriber_ref})
       end)
@@ -327,9 +343,7 @@ defmodule Glossia.Agent.Session do
   end
 
   defp streaming_loop(state, messages, max_turns, turn, emit, abort_ref) do
-    if state.abort_ref != abort_ref do
-      {:error, :aborted}
-    else
+    if state.abort_ref == abort_ref do
       emit.(:turn_start)
 
       context = build_context(state, messages)
@@ -341,8 +355,7 @@ defmodule Glossia.Agent.Session do
           # Stream tokens and collect the full response
           stream_response
           |> ReqLLM.StreamResponse.tokens()
-          |> Stream.each(fn token -> emit.({:text, token}) end)
-          |> Stream.run()
+          |> Enum.each(fn token -> emit.({:text, token}) end)
 
           # Get the full text after streaming
           text = ReqLLM.StreamResponse.text(stream_response)
@@ -372,6 +385,8 @@ defmodule Glossia.Agent.Session do
           emit.({:error, reason})
           {:error, reason}
       end
+    else
+      {:error, :aborted}
     end
   end
 
@@ -396,9 +411,10 @@ defmodule Glossia.Agent.Session do
 
   defp message_to_req_llm(%Message{role: :user, content: content, images: images}) when images != [] do
     # Include images as content parts
-    image_parts = Enum.map(images, fn img ->
-      {:image, "data:#{img.media_type};base64,#{img.data}"}
-    end)
+    image_parts =
+      Enum.map(images, fn img ->
+        {:image, "data:#{img.media_type};base64,#{img.data}"}
+      end)
 
     ReqLLM.Context.user([{:text, content} | image_parts])
   end
@@ -433,6 +449,7 @@ defmodule Glossia.Agent.Session do
         parameter_schema: convert_json_schema_to_nimble(spec.parameters),
         callback: fn args ->
           context = %{agent: self(), cwd: state.cwd, opts: []}
+
           case Tool.execute(tool_spec, args, context) do
             {:ok, result} when is_binary(result) -> result
             {:ok, result} -> JSON.encode!(result)
@@ -477,15 +494,19 @@ defmodule Glossia.Agent.Session do
     opts = []
 
     opts = if state.api_key, do: Keyword.put(opts, :api_key, state.api_key), else: opts
-    opts = if tools != [], do: Keyword.put(opts, :tools, tools), else: opts
+    opts = if tools == [], do: opts, else: Keyword.put(opts, :tools, tools)
 
     # Add thinking level for supported providers
     opts =
       case state.thinking_level do
-        :off -> opts
+        :off ->
+          opts
+
         level when level in [:minimal, :low, :medium, :high] ->
-          Keyword.put(opts, :provider_options, [extended_thinking: level])
-        _ -> opts
+          Keyword.put(opts, :provider_options, extended_thinking: level)
+
+        _ ->
+          opts
       end
 
     opts
@@ -495,7 +516,9 @@ defmodule Glossia.Agent.Session do
     # Extract tool calls if present
     tool_calls =
       case response.tool_calls do
-        nil -> []
+        nil ->
+          []
+
         calls ->
           Enum.map(calls, fn call ->
             {:tool_call, call.id, call.name, call.arguments}
@@ -505,8 +528,12 @@ defmodule Glossia.Agent.Session do
     # Extract text content
     text_blocks =
       case response.content do
-        nil -> []
-        content when is_binary(content) -> [{:text, content}]
+        nil ->
+          []
+
+        content when is_binary(content) ->
+          [{:text, content}]
+
         content when is_list(content) ->
           Enum.map(content, fn
             %{type: :text, text: text} -> {:text, text}
@@ -583,11 +610,10 @@ defmodule Glossia.Agent.Session do
 
   defp build_tool_map(tools) do
     tools
-    |> Enum.map(fn
+    |> Map.new(fn
       {module, opts} = spec -> {Tool.name(spec), {module, opts}}
       module -> {Tool.name(module), module}
     end)
-    |> Map.new()
   end
 
   defp extract_text_response(messages) do

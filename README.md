@@ -26,12 +26,12 @@ Rather than wrapping JavaScript agent frameworks, we built Agent from scratch us
 
 ## Installation
 
-Add `glossia_agent` to your dependencies in `mix.exs`:
+Add `agent` to your dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:glossia_agent, github: "glossia/agent"}
+    {:agent, github: "glossia/agent"}
   ]
 end
 ```
@@ -54,7 +54,7 @@ end
 ### 2. Start and Use the Agent
 
 ```elixir
-# Start the agent with a system prompt
+# Start the agent with an explicit system prompt override
 {:ok, agent} = MyApp.CodingAgent.start_link(
   api_key: System.get_env("ANTHROPIC_API_KEY"),
   system_prompt: """
@@ -97,30 +97,70 @@ defmodule MyApp.Application do
 end
 ```
 
+## LiveBook
+
+Agent works well in LiveBook notebooks with `Mix.install/1`:
+
+```elixir
+Mix.install([
+  {:agent, github: "glossia/agent"}
+])
+
+Application.put_env(:agent, :api_key, System.fetch_env!("ANTHROPIC_API_KEY"))
+
+defmodule NotebookAgent do
+  use Glossia.Agent
+
+  @impl true
+  def tools do
+    Glossia.Agent.Tools.read_only_tools()
+  end
+end
+
+{:ok, agent} =
+  NotebookAgent.start_link(
+    system_prompt: "You are a helpful LiveBook assistant."
+  )
+
+{:ok, response} =
+  Glossia.Agent.run(agent, "Summarize the current notebook context.")
+
+response
+```
+
+For richer notebook output, you can stream events and render them with LiveBook/Kino cells as they arrive.
+
 ## Configuration
 
 ### API Keys
 
-Set your API key via environment variable or option:
+Set your API key via environment variable, application config, or option:
 
 ```elixir
 # Environment variable (recommended) - ReqLLM auto-discovers these
 export ANTHROPIC_API_KEY="sk-ant-..."
 export OPENAI_API_KEY="sk-..."
 
+# Application config
+config :agent,
+  api_key: "sk-ant-...",
+  system_prompt: "You are a helpful coding assistant."
+
 # Per-agent option
 MyApp.CodingAgent.start_link(api_key: "sk-ant-...")
 ```
+
+Values passed to `start_link/1` take precedence over `config :agent`, which takes precedence over agent module defaults.
 
 ### Agent Options
 
 ```elixir
 MyApp.CodingAgent.start_link(
-  api_key: "sk-ant-...",                        # API key (optional if env var set)
-  model: "anthropic:claude-sonnet-4-20250514",  # Model to use (provider:model format)
-  system_prompt: "You are helpful.",            # System prompt
-  thinking_level: :medium,                      # :off, :minimal, :low, :medium, :high
-  cwd: "/path/to/project",                      # Working directory for tools
+  api_key: "sk-ant-...",                        # Overrides config :agent, :api_key
+  model: "anthropic:claude-sonnet-4-20250514",  # Overrides config/module default
+  system_prompt: "You are helpful.",            # Overrides config/module default
+  thinking_level: :medium,                      # Overrides config/module default
+  cwd: "/path/to/project",                      # Overrides config/default cwd
   name: MyApp.CodingAgent                       # GenServer name
 )
 ```

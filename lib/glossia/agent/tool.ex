@@ -123,9 +123,11 @@ defmodule Glossia.Agent.Tool do
       def parameters, do: parameters([])
 
       # Default opts implementations call the no-opts versions
-      def name([]), do: raise("#{__MODULE__} must implement name/0 or name/1")
-      def description([]), do: raise("#{__MODULE__} must implement description/0 or description/1")
-      def parameters([]), do: raise("#{__MODULE__} must implement parameters/0 or parameters/1")
+      def name([]), do: raise("#{inspect(__MODULE__)} must implement name/0 or name/1")
+
+      def description([]), do: raise("#{inspect(__MODULE__)} must implement description/0 or description/1")
+
+      def parameters([]), do: raise("#{inspect(__MODULE__)} must implement parameters/0 or parameters/1")
 
       defoverridable name: 0, name: 1, description: 0, description: 1, parameters: 0, parameters: 1
     end

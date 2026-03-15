@@ -30,6 +30,7 @@ defmodule Glossia.Agent.Tools.Edit do
     Edit a file by replacing exact text. The old_text must match exactly (including whitespace).
     Use this for precise, surgical edits.
     """
+    |> String.trim()
   end
 
   @impl true
@@ -68,10 +69,11 @@ defmodule Glossia.Agent.Tools.Edit do
           case File.write(absolute_path, new_content) do
             :ok ->
               diff = generate_diff(old_text, new_text)
-              {:ok, "Successfully edited #{path}\n\n#{diff}"}
+
+              {:ok, Enum.join(["Successfully edited #{path}", diff], "\n\n")}
 
             {:error, reason} ->
-              {:error, "Cannot write to #{path}: #{reason}"}
+              {:error, "Cannot write to #{path}: #{inspect(reason)}"}
           end
         else
           # Try to provide helpful feedback
@@ -82,7 +84,7 @@ defmodule Glossia.Agent.Tools.Edit do
         {:error, "File not found: #{path}"}
 
       {:error, reason} ->
-        {:error, "Cannot read #{path}: #{reason}"}
+        {:error, "Cannot read #{path}: #{inspect(reason)}"}
     end
   end
 
@@ -119,21 +121,21 @@ defmodule Glossia.Agent.Tools.Edit do
         "old_text not found in #{path}. Make sure the text matches exactly, including whitespace."
 
       String.contains?(content, first_line) ->
-        # The first line exists but the full match doesn't - likely whitespace issue
         """
         old_text not found in #{path}.
         The first line exists in the file, but the full match failed.
         This is often caused by whitespace differences (tabs vs spaces, trailing spaces, or line endings).
         Use the Read tool to see the exact content.
         """
+        |> String.trim()
 
       true ->
-        # First line doesn't exist at all
         """
         old_text not found in #{path}.
         The text you're looking for doesn't appear in the file.
         Use the Read tool to check the current file contents.
         """
+        |> String.trim()
     end
   end
 end

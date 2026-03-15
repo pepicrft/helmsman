@@ -1,13 +1,15 @@
 defmodule Glossia.Agent.Tools.EditTest do
-  use Glossia.Agent.ToolCase
+  use ExUnit.Case, async: true
 
   alias Glossia.Agent.Tools.Edit
 
-  test "replaces exact text", %{cwd: cwd} do
-    path = Path.join(cwd, "edit.txt")
+  @moduletag :tmp_dir
+
+  test "replaces exact text", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "edit.txt")
     File.write!(path, "Hello, World!")
 
-    context = %{cwd: cwd, opts: []}
+    context = %{cwd: tmp_dir, opts: []}
 
     {:ok, result} =
       Edit.call(
@@ -23,11 +25,11 @@ defmodule Glossia.Agent.Tools.EditTest do
     assert File.read!(path) == "Hello, Elixir!"
   end
 
-  test "returns error when text not found", %{cwd: cwd} do
-    path = Path.join(cwd, "edit.txt")
+  test "returns error when text not found", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "edit.txt")
     File.write!(path, "Hello, World!")
 
-    context = %{cwd: cwd, opts: []}
+    context = %{cwd: tmp_dir, opts: []}
 
     {:error, error} =
       Edit.call(
@@ -42,11 +44,11 @@ defmodule Glossia.Agent.Tools.EditTest do
     assert String.contains?(error, "not found")
   end
 
-  test "replaces only first occurrence", %{cwd: cwd} do
-    path = Path.join(cwd, "multi.txt")
+  test "replaces only first occurrence", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "multi.txt")
     File.write!(path, "foo bar foo bar")
 
-    context = %{cwd: cwd, opts: []}
+    context = %{cwd: tmp_dir, opts: []}
 
     {:ok, _result} =
       Edit.call(

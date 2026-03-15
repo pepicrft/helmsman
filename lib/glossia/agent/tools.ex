@@ -35,7 +35,7 @@ defmodule Glossia.Agent.Tools do
       end
   """
 
-  alias Glossia.Agent.Tools.{Read, Bash, Edit, Write}
+  alias Glossia.Agent.Tools.{Bash, Edit, Read, Write}
 
   @doc """
   Returns the default coding tools: Read, Bash, Edit, Write.

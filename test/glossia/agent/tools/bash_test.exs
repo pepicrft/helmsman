@@ -1,33 +1,45 @@
 defmodule Glossia.Agent.Tools.BashTest do
-  use Glossia.Agent.ToolCase
+  use ExUnit.Case, async: true
 
   alias Glossia.Agent.Tools.Bash
 
-  test "executes simple command", %{cwd: cwd} do
-    context = %{cwd: cwd, opts: []}
+  @moduletag :tmp_dir
+
+  test "executes simple command", %{tmp_dir: tmp_dir} do
+    context = %{cwd: tmp_dir, opts: []}
     {:ok, result} = Bash.call(%{"command" => "echo hello"}, context)
 
     assert String.contains?(result, "hello")
   end
 
-  test "captures stderr", %{cwd: cwd} do
-    context = %{cwd: cwd, opts: []}
+  test "captures stderr", %{tmp_dir: tmp_dir} do
+    context = %{cwd: tmp_dir, opts: []}
     {:ok, result} = Bash.call(%{"command" => "echo error >&2"}, context)
 
     assert String.contains?(result, "error")
   end
 
-  test "returns exit code for failures", %{cwd: cwd} do
-    context = %{cwd: cwd, opts: []}
+  test "returns exit code for failures", %{tmp_dir: tmp_dir} do
+    context = %{cwd: tmp_dir, opts: []}
     {:ok, result} = Bash.call(%{"command" => "exit 42"}, context)
 
     assert String.contains?(result, "exit code: 42")
   end
 
-  test "respects cwd", %{cwd: cwd} do
-    context = %{cwd: cwd, opts: []}
+  test "respects cwd", %{tmp_dir: tmp_dir} do
+    context = %{cwd: tmp_dir, opts: []}
     {:ok, result} = Bash.call(%{"command" => "pwd"}, context)
 
-    assert String.contains?(result, cwd)
+    assert String.contains?(result, tmp_dir)
+  end
+
+  test "accepts cwd argument relative to context cwd", %{tmp_dir: tmp_dir} do
+    nested_dir = Path.join(tmp_dir, "nested")
+    File.mkdir_p!(nested_dir)
+
+    context = %{cwd: tmp_dir, opts: []}
+    {:ok, result} = Bash.call(%{"command" => "pwd", "cwd" => "nested"}, context)
+
+    assert String.contains?(result, nested_dir)
   end
 end

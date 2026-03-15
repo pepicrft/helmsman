@@ -22,6 +22,7 @@ defmodule Glossia.Agent.Tools.Write do
     Write content to a file. Creates the file if it doesn't exist, overwrites if it does.
     Automatically creates parent directories.
     """
+    |> String.trim()
   end
 
   @impl true
@@ -55,7 +56,7 @@ defmodule Glossia.Agent.Tools.Write do
         write_file(absolute_path, content, path)
 
       {:error, reason} ->
-        {:error, "Cannot create directory #{dir}: #{reason}"}
+        {:error, "Cannot create directory #{dir}: #{inspect(reason)}"}
     end
   end
 
@@ -74,11 +75,13 @@ defmodule Glossia.Agent.Tools.Write do
       :ok ->
         bytes = byte_size(content)
         lines = content |> String.split("\n") |> length()
+
         action = if existed?, do: "Updated", else: "Created"
+
         {:ok, "#{action} #{display_path} (#{lines} lines, #{bytes} bytes)"}
 
       {:error, reason} ->
-        {:error, "Cannot write to #{display_path}: #{reason}"}
+        {:error, "Cannot write to #{display_path}: #{inspect(reason)}"}
     end
   end
 end

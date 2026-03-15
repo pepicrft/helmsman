@@ -33,6 +33,7 @@ defmodule Glossia.Agent.Tools.Read do
     Images are sent as attachments. For text files, output is truncated to #{@max_lines} lines
     or #{div(@max_bytes, 1024)}KB. Use offset/limit for large files.
     """
+    |> String.trim()
   end
 
   @impl true
@@ -79,7 +80,7 @@ defmodule Glossia.Agent.Tools.Read do
         {:error, "File not found: #{path}"}
 
       {:error, reason} ->
-        {:error, "Cannot read #{path}: #{reason}"}
+        {:error, "Cannot read #{path}: #{inspect(reason)}"}
     end
   end
 
@@ -109,12 +110,15 @@ defmodule Glossia.Agent.Tools.Read do
          }}
 
       {:error, reason} ->
-        {:error, "Cannot read image: #{reason}"}
+        {:error, "Cannot read image: #{inspect(reason)}"}
     end
   end
 
   defp media_type_for(path) do
-    case path |> Path.extname() |> String.downcase() do
+    path
+    |> Path.extname()
+    |> String.downcase()
+    |> case do
       ".jpg" -> "image/jpeg"
       ".jpeg" -> "image/jpeg"
       ".png" -> "image/png"
@@ -138,7 +142,7 @@ defmodule Glossia.Agent.Tools.Read do
         {:ok, result}
 
       {:error, reason} ->
-        {:error, "Cannot read file: #{reason}"}
+        {:error, "Cannot read file: #{inspect(reason)}"}
     end
   end
 
@@ -156,8 +160,7 @@ defmodule Glossia.Agent.Tools.Read do
     {selected, 1, length(selected)}
   end
 
-  defp select_lines(lines, offset, limit)
-       when is_integer(offset) and offset > 0 and is_integer(limit) and limit > 0 do
+  defp select_lines(lines, offset, limit) when is_integer(offset) and offset > 0 and is_integer(limit) and limit > 0 do
     selected = lines |> Enum.drop(offset - 1) |> Enum.take(limit)
     {selected, offset, offset + length(selected) - 1}
   end
@@ -203,13 +206,11 @@ defmodule Glossia.Agent.Tools.Read do
       else
         if from_line > 1 or to_line < total_lines do
           "(lines #{from_line}-#{to_line} of #{total_lines})"
-        else
-          nil
         end
       end
 
     if meta do
-      "#{meta}\n\n#{content}"
+      Enum.join([meta, content], "\n\n")
     else
       content
     end
