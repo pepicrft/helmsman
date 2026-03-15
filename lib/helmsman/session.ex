@@ -425,14 +425,23 @@ defmodule Helmsman.Session do
   end
 
   defp message_to_req_llm(%Message{role: :assistant, content: blocks}) when is_list(blocks) do
-    # Extract text content for the assistant message
     text =
       blocks
       |> Enum.filter(&match?({:text, _}, &1))
       |> Enum.map_join("", fn {:text, t} -> t end)
 
-    # Tool calls are handled separately by ReqLLM
-    ReqLLM.Context.assistant(text)
+    tool_calls =
+      blocks
+      |> Enum.filter(&match?({:tool_call, _, _, _}, &1))
+      |> Enum.map(fn {:tool_call, id, name, arguments} ->
+        %{id: id, name: name, arguments: arguments}
+      end)
+
+    if tool_calls == [] do
+      ReqLLM.Context.assistant(text)
+    else
+      ReqLLM.Context.assistant(text, tool_calls: tool_calls)
+    end
   end
 
   defp message_to_req_llm(%Message{role: :tool_result, tool_call_id: id, content: content}) do
