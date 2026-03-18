@@ -62,8 +62,9 @@ defmodule Helmsman.SessionStore.Disk do
 
   defp decode(binary) do
     {:ok, :erlang.binary_to_term(binary, [:safe])}
-  rescue
-    ArgumentError -> {:error, :invalid_snapshot}
+  catch
+    :error, _reason ->
+      {:error, :invalid_snapshot}
   end
 
   defp extract_snapshot(%{version: @version, snapshot: %Snapshot{} = snapshot}), do: {:ok, snapshot}

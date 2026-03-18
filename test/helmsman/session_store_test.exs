@@ -41,4 +41,14 @@ defmodule Helmsman.SessionStoreTest do
     assert :ok = Disk.clear(path: path, cwd: "/tmp")
     assert Disk.load(path: path, cwd: "/tmp") == :not_found
   end
+
+  test "disk store returns an error for invalid snapshots" do
+    path =
+      Path.join(System.tmp_dir!(), "helmsman-invalid-session-#{System.unique_integer([:positive])}")
+
+    on_exit(fn -> File.rm_rf(path) end)
+
+    assert :ok = File.write(path, "not a valid snapshot")
+    assert Disk.load(path: path, cwd: "/tmp") == {:error, :invalid_snapshot}
+  end
 end

@@ -36,14 +36,18 @@ defmodule Helmsman.SessionStore.Memory do
   defp ensure_table! do
     case :ets.whereis(@table) do
       :undefined ->
-        try do
-          :ets.new(@table, [:named_table, :public, :set, read_concurrency: true])
-        rescue
-          ArgumentError -> @table
-        end
+        :global.trans({__MODULE__, :ensure_table}, fn ->
+          case :ets.whereis(@table) do
+            :undefined ->
+              :ets.new(@table, [:named_table, :public, :set, read_concurrency: true])
 
-      _tid ->
-        @table
+            tid ->
+              tid
+          end
+        end)
+
+      tid ->
+        tid
     end
   end
 
