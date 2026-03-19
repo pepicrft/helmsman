@@ -69,6 +69,8 @@ defmodule Helmsman do
 
   @type tool_spec :: module() | {module(), keyword()}
   @type runtime_provider_spec :: module() | {module(), keyword()}
+  @type workspace_provider_spec :: module() | {module(), keyword()}
+  @type session_transport_spec :: module() | {module(), keyword()}
   @type session_store_spec :: module() | {module(), keyword()}
 
   # ============================================================================
