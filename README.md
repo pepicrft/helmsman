@@ -166,8 +166,40 @@ MyApp.CodingAgent.start_link(
   system_prompt: "You are helpful.",            # Overrides config/module default
   thinking_level: :medium,                      # Overrides config/module default
   cwd: "/path/to/project",                      # Overrides config/default cwd
+  session_store: Helmsman.SessionStore.Memory,  # Optional session persistence
   name: MyApp.CodingAgent                       # GenServer name
 )
+```
+
+### Session Storage
+
+Persisted sessions are opt-in. Provide a session store to save and restore
+conversation history plus session settings.
+
+Built-in session stores:
+
+- `Helmsman.SessionStore.Memory` stores snapshots in ETS for reuse within the current VM
+- `Helmsman.SessionStore.Disk` persists snapshots to disk across restarts
+
+```elixir
+# Restore within the current VM
+{:ok, agent} =
+  MyApp.CodingAgent.start_link(
+    session_store: {Helmsman.SessionStore.Memory, key: {:coding_agent, "/tmp/project"}}
+  )
+
+# Persist to disk across restarts
+{:ok, agent} =
+  MyApp.CodingAgent.start_link(
+    cwd: "/tmp/project",
+    session_store: Helmsman.SessionStore.Disk
+  )
+
+# Custom path or custom implementation
+{:ok, agent} =
+  MyApp.CodingAgent.start_link(
+    session_store: {Helmsman.SessionStore.Disk, path: "/tmp/helmsman.session"}
+  )
 ```
 
 ### Supported Providers

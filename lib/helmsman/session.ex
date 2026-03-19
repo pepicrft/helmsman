@@ -23,7 +23,8 @@ defmodule Helmsman.Session do
 
   use GenServer
 
-  alias Helmsman.{Message, Telemetry, Tool}
+  alias Helmsman.{Message, SessionStore, Telemetry, Tool}
+  alias Helmsman.SessionStore.Snapshot
   alias ReqLLM.ToolCall
 
   require Logger
@@ -39,6 +40,7 @@ defmodule Helmsman.Session do
     :tools,
     :cwd,
     :api_key,
+    :session_store,
     :user_state,
     messages: [],
     streaming: false,
@@ -55,18 +57,21 @@ defmodule Helmsman.Session do
   @doc false
   def start_link(agent_module, opts) do
     config = Keyword.get(opts, :config, [])
+    explicit_keys = opts |> Keyword.keys() |> MapSet.new()
     opts = Keyword.delete(opts, :config)
     {gen_opts, agent_opts} = Keyword.split(opts, [:name])
 
     agent_opts =
       agent_opts
       |> Keyword.put_new(:agent_module, agent_module)
+      |> Keyword.put(:explicit_keys, explicit_keys)
       |> put_configured_opt(config, :api_key)
       |> put_configured_opt(config, :model, fn -> agent_module.model() end)
       |> put_configured_opt(config, :thinking_level, fn -> agent_module.thinking_level() end)
       |> put_configured_opt(config, :system_prompt, fn -> agent_module.system_prompt() end)
       |> Keyword.put_new(:tools, agent_module.tools())
       |> put_configured_opt(config, :cwd, &File.cwd!/0)
+      |> put_configured_opt(config, :session_store)
 
     GenServer.start_link(__MODULE__, agent_opts, gen_opts)
   end
@@ -158,19 +163,24 @@ defmodule Helmsman.Session do
   @impl true
   def init(opts) do
     agent_module = Keyword.fetch!(opts, :agent_module)
+    session_store = Keyword.get(opts, :session_store)
+    snapshot = load_snapshot(session_store, opts)
 
     case agent_module.init(opts) do
       {:ok, user_state} ->
-        state = %__MODULE__{
-          agent_module: agent_module,
-          model: Keyword.fetch!(opts, :model),
-          thinking_level: Keyword.fetch!(opts, :thinking_level),
-          system_prompt: Keyword.get(opts, :system_prompt),
-          tools: Keyword.fetch!(opts, :tools),
-          cwd: Keyword.fetch!(opts, :cwd),
-          api_key: opts[:api_key],
-          user_state: user_state
-        }
+        state =
+          %__MODULE__{
+            agent_module: agent_module,
+            model: restore_value(opts, :model, snapshot && snapshot.model),
+            thinking_level: restore_value(opts, :thinking_level, snapshot && snapshot.thinking_level),
+            system_prompt: restore_value(opts, :system_prompt, snapshot && snapshot.system_prompt),
+            tools: Keyword.fetch!(opts, :tools),
+            cwd: Keyword.fetch!(opts, :cwd),
+            api_key: opts[:api_key],
+            session_store: session_store,
+            user_state: user_state
+          }
+          |> restore_messages(snapshot)
 
         {:ok, state}
 
@@ -205,7 +215,9 @@ defmodule Helmsman.Session do
   end
 
   def handle_call(:clear, _from, state) do
-    {:reply, :ok, %{state | messages: []}}
+    state = %{state | messages: []}
+    persist_or_clear_snapshot(state, :clear)
+    {:reply, :ok, state}
   end
 
   def handle_call(:abort, _from, state) do
@@ -234,17 +246,18 @@ defmodule Helmsman.Session do
       abort_ref = state.abort_ref
 
       Task.start(fn ->
-        do_stream(
-          state,
-          prompt,
-          opts,
-          fn event ->
-            GenServer.cast(parent, {:broadcast_event, event, subscriber_ref})
-          end,
-          abort_ref
-        )
+        result =
+          do_stream(
+            state,
+            prompt,
+            opts,
+            fn event ->
+              GenServer.cast(parent, {:broadcast_event, event, subscriber_ref})
+            end,
+            abort_ref
+          )
 
-        GenServer.cast(parent, {:stream_complete, subscriber_ref})
+        GenServer.cast(parent, {:stream_complete, subscriber_ref, result})
       end)
 
       {:noreply, state}
@@ -263,10 +276,19 @@ defmodule Helmsman.Session do
 
   def handle_cast({:run_complete, from, {result, messages}}, state) do
     GenServer.reply(from, result)
-    {:noreply, %{state | streaming: false, messages: messages}}
+    state = %{state | streaming: false, messages: messages}
+    persist_snapshot(state)
+    {:noreply, state}
   end
 
-  def handle_cast({:stream_complete, ref}, state) do
+  def handle_cast({:stream_complete, ref, {:ok, messages, _response}}, state) do
+    broadcast(state, ref, :done)
+    state = %{state | streaming: false, messages: messages}
+    persist_snapshot(state)
+    {:noreply, state}
+  end
+
+  def handle_cast({:stream_complete, ref, _result}, state) do
     broadcast(state, ref, :done)
     {:noreply, %{state | streaming: false}}
   end
@@ -639,5 +661,86 @@ defmodule Helmsman.Session do
       {:stop, _reason, user_state} ->
         %{state | user_state: user_state, streaming: false}
     end
+  end
+
+  defp restore_value(opts, key, stored_value) do
+    explicit_keys = Keyword.get(opts, :explicit_keys, MapSet.new())
+
+    cond do
+      MapSet.member?(explicit_keys, key) ->
+        Keyword.fetch!(opts, key)
+
+      is_nil(stored_value) ->
+        Keyword.get(opts, key)
+
+      true ->
+        stored_value
+    end
+  end
+
+  defp restore_messages(state, nil), do: state
+  defp restore_messages(state, %Snapshot{messages: messages}), do: %{state | messages: messages}
+
+  defp load_snapshot(nil, _opts), do: nil
+
+  defp load_snapshot(session_store, opts) do
+    case SessionStore.load(session_store, session_store_opts(opts)) do
+      {:ok, %Snapshot{} = snapshot} ->
+        snapshot
+
+      :not_found ->
+        nil
+
+      {:error, reason} ->
+        Logger.warning("failed to load session snapshot: #{inspect(reason)}")
+        nil
+    end
+  end
+
+  defp persist_or_clear_snapshot(%__MODULE__{session_store: nil}, _mode), do: :ok
+
+  defp persist_or_clear_snapshot(state, :clear) do
+    case SessionStore.clear(state.session_store, session_store_opts(state)) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("failed to clear session snapshot: #{inspect(reason)}")
+        :ok
+    end
+  end
+
+  defp persist_snapshot(%__MODULE__{session_store: nil}), do: :ok
+
+  defp persist_snapshot(state) do
+    snapshot = %Snapshot{
+      messages: state.messages,
+      model: state.model,
+      thinking_level: state.thinking_level,
+      system_prompt: state.system_prompt
+    }
+
+    case SessionStore.save(state.session_store, snapshot, session_store_opts(state)) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("failed to persist session snapshot: #{inspect(reason)}")
+        :ok
+    end
+  end
+
+  defp session_store_opts(opts) when is_list(opts) do
+    [
+      agent_module: Keyword.get(opts, :agent_module),
+      cwd: Keyword.get(opts, :cwd)
+    ]
+  end
+
+  defp session_store_opts(%__MODULE__{} = state) do
+    [
+      agent_module: state.agent_module,
+      cwd: state.cwd
+    ]
   end
 end

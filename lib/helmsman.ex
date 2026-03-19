@@ -68,6 +68,7 @@ defmodule Helmsman do
           | :done
 
   @type tool_spec :: module() | {module(), keyword()}
+  @type session_store_spec :: module() | {module(), keyword()}
 
   # ============================================================================
   # Behaviour Definition
@@ -149,6 +150,7 @@ defmodule Helmsman do
       - `:system_prompt` - System prompt for the agent
       - `:thinking_level` - Override the thinking level
       - `:cwd` - Working directory for tools (default: File.cwd!())
+      - `:session_store` - Session store module or `{module, opts}` tuple
       - `:name` - GenServer registration name
 
       Plus all standard GenServer options.
