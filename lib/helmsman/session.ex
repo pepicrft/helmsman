@@ -476,7 +476,7 @@ defmodule Helmsman.Session do
         description: spec.description,
         parameter_schema: convert_json_schema_to_nimble(spec.parameters),
         callback: fn args ->
-          context = %{agent: self(), cwd: state.cwd, opts: []}
+          context = tool_context(state, [])
 
           case Tool.execute(tool_spec, args, context) do
             {:ok, result} when is_binary(result) -> result
@@ -612,7 +612,7 @@ defmodule Helmsman.Session do
         Message.tool_result(id, {:error, "Unknown tool: #{name}"})
 
       {module, opts} ->
-        context = %{agent: self(), cwd: state.cwd, opts: opts}
+        context = tool_context(state, opts)
 
         case Tool.execute({module, opts}, args, context) do
           {:ok, result} -> Message.tool_result(id, result)
@@ -620,7 +620,7 @@ defmodule Helmsman.Session do
         end
 
       module ->
-        context = %{agent: self(), cwd: state.cwd, opts: []}
+        context = tool_context(state, [])
 
         case Tool.execute(module, args, context) do
           {:ok, result} -> Message.tool_result(id, result)
@@ -742,5 +742,13 @@ defmodule Helmsman.Session do
       agent_module: state.agent_module,
       cwd: state.cwd
     ]
+  end
+
+  defp tool_context(state, tool_opts) do
+    %{
+      agent: self(),
+      cwd: state.cwd,
+      opts: tool_opts
+    }
   end
 end
