@@ -19,7 +19,6 @@ defmodule Helmsman.Worker do
             system_prompt: String.t() | nil,
             tools: [Helmsman.tool_spec()],
             cwd: String.t() | nil,
-            runtime_provider: Helmsman.runtime_provider_spec() | nil,
             session_store: Helmsman.session_store_spec() | nil,
             messages: [Helmsman.Message.t()],
             metadata: map()
@@ -31,7 +30,6 @@ defmodule Helmsman.Worker do
       :thinking_level,
       :system_prompt,
       :cwd,
-      :runtime_provider,
       :session_store,
       tools: [],
       messages: [],

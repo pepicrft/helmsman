@@ -4,19 +4,6 @@ defmodule Helmsman.SessionTest do
   alias Helmsman.Message
   alias Helmsman.SessionStore.Snapshot
 
-  defmodule RecordingRuntimeProvider do
-    @behaviour Helmsman.RuntimeProvider
-
-    @impl true
-    def init(opts) do
-      send(Keyword.fetch!(opts, :test_pid), {:runtime_provider_init, opts})
-      {:ok, %{provider: :recording, cwd: Keyword.fetch!(opts, :cwd)}}
-    end
-
-    @impl true
-    def terminate(_session), do: :ok
-  end
-
   defmodule ConfigAgent do
     use Helmsman
 
@@ -72,8 +59,6 @@ defmodule Helmsman.SessionTest do
     assert state.system_prompt == "config prompt"
     assert state.thinking_level == :low
     assert state.cwd == "/tmp/agent"
-    assert state.runtime_provider == Helmsman.RuntimeProvider.Local
-    assert state.runtime_provider_session == %{cwd: "/tmp/agent"}
     assert state.user_state == :ok
 
     GenServer.stop(pid)
@@ -193,25 +178,5 @@ defmodule Helmsman.SessionTest do
                       thinking_level: :medium,
                       system_prompt: "prompt"
                     }}
-  end
-
-  test "initializes the configured runtime provider" do
-    {:ok, pid} =
-      ConfigAgent.start_link(
-        cwd: "/tmp/agent",
-        runtime_provider: {RecordingRuntimeProvider, test_pid: self()}
-      )
-
-    assert_receive {:runtime_provider_init, opts}
-    assert opts[:agent_module] == ConfigAgent
-    assert opts[:cwd] == "/tmp/agent"
-    assert opts[:test_pid] == self()
-
-    state = :sys.get_state(pid)
-
-    assert state.runtime_provider == {RecordingRuntimeProvider, test_pid: self()}
-    assert state.runtime_provider_session == %{provider: :recording, cwd: "/tmp/agent"}
-
-    GenServer.stop(pid)
   end
 end

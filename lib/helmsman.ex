@@ -153,7 +153,6 @@ defmodule Helmsman do
       - `:system_prompt` - System prompt for the agent
       - `:thinking_level` - Override the thinking level
       - `:cwd` - Working directory for tools (default: File.cwd!())
-      - `:runtime_provider` - Execution environment for tools (default: `Helmsman.RuntimeProvider.Local`)
       - `:session_store` - Session store module or `{module, opts}` tuple
       - `:name` - GenServer registration name
 

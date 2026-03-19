@@ -1,10 +1,10 @@
 defmodule Helmsman.RuntimeProvider do
   @moduledoc """
-  Behaviour for execution environments used by Helmsman tools.
+  Behaviour for provisioning execution environments for Helmsman workers.
 
-  Runtime providers define where a session's filesystem and command execution
-  live. The default provider is local, but providers can also map Helmsman
-  sessions to remote environments such as Daytona, E2B, or Modal.
+  In the remote-worker architecture, runtime providers belong to the local
+  controller boundary. They are responsible for booting and tearing down the
+  environment that will host a worker, not for being passed into ordinary tools.
   """
 
   @type session :: term()
