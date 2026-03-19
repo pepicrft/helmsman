@@ -3,6 +3,7 @@ defmodule Helmsman.WorkspaceProviderTest do
 
   alias Helmsman.WorkspaceProvider
   alias Helmsman.WorkspaceProvider.Snapshot
+  alias Helmsman.WorkspaceProvider.Snapshot.{Source, Target}
 
   defmodule RecordingProvider do
     @behaviour WorkspaceProvider
@@ -10,13 +11,24 @@ defmodule Helmsman.WorkspaceProviderTest do
     @impl true
     def snapshot(local_path, opts) do
       send(Keyword.fetch!(opts, :test_pid), {:snapshot, local_path, opts})
-      {:ok, %Snapshot{mode: :archive, local_path: local_path, root_path: local_path}}
+
+      {:ok,
+       %Snapshot{
+         mode: :archive,
+         source: %Source{
+           local_path: local_path,
+           root_path: local_path
+         },
+         target: %Target{
+           path: "/runtime/project"
+         }
+       }}
     end
 
     @impl true
     def materialize(snapshot, runtime, opts) do
       send(Keyword.fetch!(opts, :test_pid), {:materialize, snapshot, runtime, opts})
-      {:ok, %{path: snapshot.root_path, runtime: runtime}}
+      {:ok, %{path: snapshot.target.path, runtime: runtime}}
     end
 
     @impl true
@@ -34,12 +46,13 @@ defmodule Helmsman.WorkspaceProviderTest do
                source: :test
              )
 
-    assert snapshot.root_path == "/tmp/project"
+    assert snapshot.source.root_path == "/tmp/project"
+    assert snapshot.target.path == "/runtime/project"
     assert_receive {:snapshot, "/tmp/project", opts}
     assert opts[:test_pid] == self()
     assert opts[:source] == :test
 
-    assert {:ok, %{path: "/tmp/project", runtime: :runtime}} =
+    assert {:ok, %{path: "/runtime/project", runtime: :runtime}} =
              WorkspaceProvider.materialize(
                {RecordingProvider, test_pid: self()},
                snapshot,
@@ -68,12 +81,12 @@ defmodule Helmsman.WorkspaceProviderTest do
   test "local provider snapshots and materializes the current path" do
     assert {:ok, snapshot} = WorkspaceProvider.Local.snapshot(".", [])
     assert snapshot.mode == :local
-    assert Path.type(snapshot.root_path) == :absolute
+    assert Path.type(snapshot.source.root_path) == :absolute
 
     assert {:ok, %{path: path, snapshot: ^snapshot}} =
              WorkspaceProvider.Local.materialize(snapshot, :runtime, [])
 
-    assert path == snapshot.root_path
+    assert path == snapshot.source.root_path
     assert :ok = WorkspaceProvider.Local.collect(:runtime, %{path: path}, ".", [])
   end
 end
