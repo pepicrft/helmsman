@@ -163,6 +163,7 @@ Values passed to `start_link/1` take precedence over `config :helmsman`, which t
 MyApp.CodingAgent.start_link(
   api_key: "sk-ant-...",                        # Overrides config :helmsman, :api_key
   model: "anthropic:claude-sonnet-4-20250514",  # Overrides config/module default
+  base_url: "http://localhost:11434/v1",        # Override provider's default URL
   system_prompt: "You are helpful.",            # Overrides config/module default
   thinking_level: :medium,                      # Overrides config/module default
   cwd: "/path/to/project",                      # Overrides config/default cwd
@@ -211,6 +212,7 @@ Thanks to [ReqLLM](https://github.com/agentjido/req_llm), Helmsman supports 18+ 
 | Anthropic | `anthropic:claude-sonnet-4-20250514` |
 | OpenAI | `openai:gpt-4o` |
 | Google Gemini | `google:gemini-2.0-flash` |
+| Ollama | `ollama:llama3.2` |
 | Groq | `groq:llama-3.3-70b-versatile` |
 | OpenRouter | `openrouter:anthropic/claude-3.5-sonnet` |
 | xAI | `xai:grok-3` |
