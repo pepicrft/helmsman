@@ -40,6 +40,7 @@ defmodule Helmsman.Session do
     :tools,
     :cwd,
     :api_key,
+    :base_url,
     :session_store,
     :user_state,
     messages: [],
@@ -66,6 +67,7 @@ defmodule Helmsman.Session do
       |> Keyword.put_new(:agent_module, agent_module)
       |> Keyword.put(:explicit_keys, explicit_keys)
       |> put_configured_opt(config, :api_key)
+      |> put_configured_opt(config, :base_url)
       |> put_configured_opt(config, :model, fn -> agent_module.model() end)
       |> put_configured_opt(config, :thinking_level, fn -> agent_module.thinking_level() end)
       |> put_configured_opt(config, :system_prompt, fn -> agent_module.system_prompt() end)
@@ -177,6 +179,7 @@ defmodule Helmsman.Session do
             tools: Keyword.fetch!(opts, :tools),
             cwd: Keyword.fetch!(opts, :cwd),
             api_key: opts[:api_key],
+            base_url: opts[:base_url],
             session_store: session_store,
             user_state: user_state
           }
@@ -522,6 +525,7 @@ defmodule Helmsman.Session do
     opts = []
 
     opts = if state.api_key, do: Keyword.put(opts, :api_key, state.api_key), else: opts
+    opts = if state.base_url, do: Keyword.put(opts, :base_url, state.base_url), else: opts
     opts = if tools == [], do: opts, else: Keyword.put(opts, :tools, tools)
 
     # Add thinking level for supported providers

@@ -47,7 +47,7 @@ defmodule Helmsman do
   - **Session** - A GenServer managing conversation state and the agent loop
   - **Message** - User, assistant, or tool result messages in the conversation
   - **Tool** - A capability the agent can invoke (read files, run commands, etc.)
-  - **Provider** - An LLM backend (Anthropic, OpenAI, etc.)
+  - **Provider** - An LLM backend (Anthropic, OpenAI, Ollama, etc.)
   - **Event** - Notifications during agent execution for streaming/UI
   """
 
@@ -147,6 +147,7 @@ defmodule Helmsman do
 
       - `:api_key` - API key for the LLM provider
       - `:model` - Override the default model (format: "provider:model")
+      - `:base_url` - Override the provider's default base URL
       - `:system_prompt` - System prompt for the agent
       - `:thinking_level` - Override the thinking level
       - `:cwd` - Working directory for tools (default: File.cwd!())
