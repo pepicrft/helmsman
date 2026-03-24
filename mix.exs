@@ -23,6 +23,7 @@ defmodule Helmsman.MixProject do
 
   def application do
     [
+      mod: {Helmsman.Application, []},
       extra_applications: [:logger]
     ]
   end
@@ -73,6 +74,9 @@ defmodule Helmsman.MixProject do
           Helmsman.Tools.Bash,
           Helmsman.Tools.Edit,
           Helmsman.Tools.Write
+        ],
+        Providers: [
+          Helmsman.Providers.Ollama
         ]
       ]
     ]
