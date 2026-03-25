@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.6.0] - 2026-03-25
+
+### Features
+
+- Rename project from Helmsman to Condukt
+
 ## [0.5.0] - 2026-03-24
 
 ### Features
