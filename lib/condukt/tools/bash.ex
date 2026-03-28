@@ -23,17 +23,6 @@ defmodule Condukt.Tools.Bash do
   @max_bytes 50 * 1024
   @default_timeout 120_000
 
-  defmodule CommandRunner do
-    @callback cmd(binary(), [binary()], keyword()) :: {Collectable.t(), non_neg_integer() | :timeout}
-  end
-
-  defmodule MuonTrapRunner do
-    @behaviour CommandRunner
-
-    @impl true
-    def cmd(command, args, opts), do: MuonTrap.cmd(command, args, opts)
-  end
-
   @impl true
   def name, do: "Bash"
 
@@ -109,14 +98,18 @@ defmodule Condukt.Tools.Bash do
   end
 
   defp execute_command(command, cwd, timeout) do
-    case MuonTrapRunner.cmd("bash", ["-c", command],
-           cd: cwd,
-           stderr_to_stdout: true,
-           env: build_env(),
-           timeout: timeout
-         ) do
-      {_output, :timeout} -> {:error, :timeout}
-      {output, exit_code} -> {:ok, output, exit_code}
+    task =
+      Task.async(fn ->
+        System.cmd("bash", ["-c", command],
+          cd: cwd,
+          stderr_to_stdout: true,
+          env: build_env()
+        )
+      end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {output, exit_code}} -> {:ok, output, exit_code}
+      nil -> {:error, :timeout}
     end
   rescue
     error -> {:error, Exception.message(error)}

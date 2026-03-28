@@ -74,8 +74,16 @@ defmodule Condukt.Session do
       |> Keyword.put_new(:tools, agent_module.tools())
       |> put_configured_opt(config, :cwd, &File.cwd!/0)
       |> put_configured_opt(config, :session_store)
+      |> Keyword.put_new_lazy(:sandbox, fn -> agent_module.sandbox() end)
 
-    GenServer.start_link(__MODULE__, agent_opts, gen_opts)
+    sandbox_config = Keyword.get(agent_opts, :sandbox)
+
+    if sandbox_config do
+      # Run the entire session remotely in the sandbox
+      Condukt.Sandbox.start_link(agent_module, agent_opts, sandbox_config)
+    else
+      GenServer.start_link(__MODULE__, agent_opts, gen_opts)
+    end
   end
 
   defp put_configured_opt(opts, config, key, default_fun \\ fn -> nil end) do
@@ -481,7 +489,7 @@ defmodule Condukt.Session do
         callback: fn args ->
           context = %{agent: self(), cwd: state.cwd, opts: []}
 
-          case Tool.execute(tool_spec, args, context) do
+          case execute_tool_call(state, tool_spec, args, context) do
             {:ok, result} when is_binary(result) -> result
             {:ok, result} -> JSON.encode!(result)
             {:error, reason} -> "Error: #{inspect(reason)}"
@@ -615,22 +623,26 @@ defmodule Condukt.Session do
       nil ->
         Message.tool_result(id, {:error, "Unknown tool: #{name}"})
 
-      {module, opts} ->
-        context = %{agent: self(), cwd: state.cwd, opts: opts}
+      tool_spec ->
+        {tool_spec, context} = build_tool_context(tool_spec, state)
 
-        case Tool.execute({module, opts}, args, context) do
-          {:ok, result} -> Message.tool_result(id, result)
-          {:error, reason} -> Message.tool_result(id, {:error, reason})
-        end
-
-      module ->
-        context = %{agent: self(), cwd: state.cwd, opts: []}
-
-        case Tool.execute(module, args, context) do
+        case execute_tool_call(state, tool_spec, args, context) do
           {:ok, result} -> Message.tool_result(id, result)
           {:error, reason} -> Message.tool_result(id, {:error, reason})
         end
     end
+  end
+
+  defp build_tool_context({module, opts}, state) do
+    {{module, opts}, %{agent: self(), cwd: state.cwd, opts: opts}}
+  end
+
+  defp build_tool_context(module, state) do
+    {module, %{agent: self(), cwd: state.cwd, opts: []}}
+  end
+
+  defp execute_tool_call(_state, tool_spec, args, context) do
+    Tool.execute(tool_spec, args, context)
   end
 
   defp build_tool_map(tools) do

@@ -109,7 +109,32 @@ defmodule Condukt do
   """
   @callback handle_event(event(), term()) :: {:noreply, term()} | {:stop, term(), term()}
 
-  @optional_callbacks [system_prompt: 0, tools: 0, model: 0, thinking_level: 0, init: 1, handle_event: 2]
+  @doc """
+  Returns sandbox configuration for remote execution.
+
+  When a sandbox is configured, the agent runs as a local client (frontend)
+  while tool execution happens in a remote sandbox environment provisioned
+  via Terrarium. The transport layer uses SSH.
+
+  Return `nil` to run locally (default), or a map with:
+
+  - `:provider` - A `Terrarium.Provider` module (required)
+  - `:provider_opts` - Options passed to the provider (optional)
+  - `:terrarium_config` - Terrarium configuration override (optional)
+
+  ## Example
+
+      @impl true
+      def sandbox do
+        %{
+          provider: Terrarium.Providers.Daytona,
+          provider_opts: [api_key: System.fetch_env!("DAYTONA_API_KEY")]
+        }
+      end
+  """
+  @callback sandbox() :: Condukt.Sandbox.config() | nil
+
+  @optional_callbacks [system_prompt: 0, tools: 0, model: 0, thinking_level: 0, init: 1, handle_event: 2, sandbox: 0]
 
   # ============================================================================
   # __using__ Macro
@@ -138,7 +163,10 @@ defmodule Condukt do
       @impl Condukt
       def handle_event(_event, state), do: {:noreply, state}
 
-      defoverridable system_prompt: 0, tools: 0, model: 0, thinking_level: 0, init: 1, handle_event: 2
+      @impl Condukt
+      def sandbox, do: nil
+
+      defoverridable system_prompt: 0, tools: 0, model: 0, thinking_level: 0, init: 1, handle_event: 2, sandbox: 0
 
       @doc """
       Starts the agent process.
@@ -152,6 +180,7 @@ defmodule Condukt do
       - `:thinking_level` - Override the thinking level
       - `:cwd` - Working directory for tools (default: File.cwd!())
       - `:session_store` - Session store module or `{module, opts}` tuple
+      - `:sandbox` - Sandbox config map (see `sandbox/0` callback) for remote execution
       - `:name` - GenServer registration name
 
       Plus all standard GenServer options.

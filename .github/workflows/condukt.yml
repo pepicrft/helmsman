@@ -2,6 +2,7 @@ name: Condukt
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
 
 permissions:
@@ -10,6 +11,7 @@ permissions:
 jobs:
   compile:
     name: Compile without warnings
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
@@ -38,6 +40,7 @@ jobs:
 
   test:
     name: Run tests
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
@@ -63,6 +66,7 @@ jobs:
 
   format:
     name: Check formatting
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test

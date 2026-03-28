@@ -1,2 +1,1 @@
-Mimic.copy(Condukt.Tools.Bash.MuonTrapRunner)
-ExUnit.start()
+ExUnit.start(exclude: [:e2e])
