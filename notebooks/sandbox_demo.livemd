@@ -19,9 +19,7 @@ ssh_key_path = Path.expand("~/.ssh/id_ed25519")
 payload = Base.url_encode64("{}", padding: false)
 
 {sig_pem, 0} =
-  System.cmd("ssh-keygen", ["-Y", "sign", "-f", ssh_key_path, "-n", "v0@exe.dev"],
-    stdin: "{}"
-  )
+  System.shell(~s(printf '{}' | ssh-keygen -Y sign -f #{ssh_key_path} -n v0@exe.dev))
 
 sig_b64 =
   sig_pem
