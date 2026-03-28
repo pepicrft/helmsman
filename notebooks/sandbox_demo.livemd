@@ -11,9 +11,19 @@ Mix.install([
 
 ## Setup
 
-The exe.dev token is generated automatically from your SSH key. No API keys needed — we use z.ai's free GLM model.
+Enter your z.ai API key (free at [open.bigmodel.cn](https://open.bigmodel.cn)). The exe.dev token is generated automatically from your SSH key.
 
 ```elixir
+zai_key_input = Kino.Input.password("Z.ai API Key")
+```
+
+```elixir
+zai_key = Kino.Input.read(zai_key_input)
+
+if zai_key in [nil, ""] do
+  Kino.interrupt!(:error, "Please enter your Z.ai API key above")
+end
+
 # Generate exe.dev token from SSH key
 ssh_key_path = Path.expand("~/.ssh/id_ed25519")
 payload = Base.url_encode64("{}", padding: false)
@@ -68,7 +78,7 @@ end
 First, let's run the agent **locally** — tools execute on this machine.
 
 ```elixir
-{:ok, local_agent} = DemoAgent.start_link()
+{:ok, local_agent} = DemoAgent.start_link(api_key: zai_key)
 
 Condukt.stream(local_agent, "What operating system is this? Run `uname -a` to find out.")
 |> Enum.reduce([], fn
@@ -108,6 +118,7 @@ Kino.Frame.append(frame, Kino.Markdown.new("**Starting sandbox...**"))
 
 {:ok, sandbox_agent} =
   DemoAgent.start_link(
+    api_key: zai_key,
     sandbox: %{
       provider: Terrarium.Providers.Exe,
       provider_opts: [token: exe_token]
