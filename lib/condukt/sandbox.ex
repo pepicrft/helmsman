@@ -2,49 +2,30 @@ defmodule Condukt.Sandbox do
   @moduledoc """
   Manages sandbox environments for remote agent execution.
 
-  When a sandbox is configured, the local agent acts as a client/frontend while
-  tool execution happens in a remote sandbox environment. The sandbox is provisioned
-  via Terrarium, and the current BEAM runtime is replicated into it using
-  `Terrarium.replicate/2` — which installs the same OTP version (via mise),
-  deploys the running code, and starts a connected peer node over SSH.
+  When a sandbox is configured, the entire agent session runs in a remote
+  sandbox — LLM calls, tool execution, message history, everything. The local
+  process is just a thin proxy that forwards calls to the remote session via
+  `:peer.call`.
 
-  Tool calls are then executed on the remote node via `:erpc`.
+  The sandbox is provisioned via Terrarium, and the current BEAM runtime is
+  replicated into it using `Terrarium.replicate/2`.
 
   ## Configuration
 
-  Agents declare sandbox support by implementing the `sandbox/0` callback:
-
-      defmodule MyAgent do
-        use Condukt
-
-        @impl true
-        def sandbox do
-          %{
-            provider: Terrarium.Providers.Exe,
-            provider_opts: [token: System.fetch_env!("EXE_DEV_TOKEN")]
-          }
-        end
-      end
-
-  Or pass `:sandbox` as an option to `start_link/1`:
-
-      MyAgent.start_link(sandbox: %{
-        provider: Terrarium.Providers.Exe,
-        provider_opts: [token: System.fetch_env!("EXE_DEV_TOKEN")]
-      })
+      MyAgent.start_link(
+        api_key: "sk-...",
+        sandbox: %{
+          provider: Terrarium.Providers.Exe,
+          provider_opts: [token: "exe0.xxx"]
+        }
+      )
   """
 
   use GenServer
 
   require Logger
 
-  defstruct [:terrarium_sandbox, :peer_pid, :node]
-
-  @type t :: %__MODULE__{
-          terrarium_sandbox: Terrarium.Sandbox.t() | nil,
-          peer_pid: pid() | nil,
-          node: node() | nil
-        }
+  defstruct [:terrarium_sandbox, :peer_pid, :remote_session, subscribers: []]
 
   @type config :: %{
           required(:provider) => module(),
@@ -52,39 +33,48 @@ defmodule Condukt.Sandbox do
         }
 
   @doc """
-  Starts a sandbox process that provisions the remote environment.
+  Starts a sandbox, replicates the runtime, and starts the agent session remotely.
   """
-  @spec start_link(config()) :: GenServer.on_start()
-  def start_link(config) do
-    GenServer.start_link(__MODULE__, config)
+  def start_link(agent_module, agent_opts, sandbox_config) do
+    GenServer.start_link(__MODULE__, {agent_module, agent_opts, sandbox_config})
   end
 
   @doc """
-  Stops the sandbox, tearing down the peer node and destroying the remote environment.
+  Stops the sandbox, tearing down the remote session and destroying the environment.
   """
-  @spec stop(GenServer.server()) :: :ok
   def stop(pid) do
     GenServer.stop(pid)
   end
 
   @doc """
-  Returns the remote node name.
+  Runs a prompt on the remote session. Same as `Condukt.Session.run/3`.
   """
-  @spec remote_node(GenServer.server()) :: node()
-  def remote_node(pid) do
-    GenServer.call(pid, :remote_node)
+  def run(pid, prompt, opts \\ []) do
+    GenServer.call(pid, {:run, prompt, opts}, opts[:timeout] || 300_000)
   end
 
   @doc """
-  Executes a tool on the remote sandbox node.
+  Streams a prompt from the remote session.
 
-  The tool module, arguments, and context are sent to the remote node
-  and executed there via `:erpc.call/4`.
+  Collects all events on the remote and returns them as a list,
+  since `:peer.call` doesn't support real-time streaming.
   """
-  @spec exec_tool(GenServer.server(), module() | {module(), keyword()}, map(), Condukt.Tool.context()) ::
-          Condukt.Tool.result()
-  def exec_tool(pid, tool_spec, args, context) do
-    GenServer.call(pid, {:exec_tool, tool_spec, args, context}, :infinity)
+  def stream(pid, prompt, opts \\ []) do
+    GenServer.call(pid, {:stream, prompt, opts}, opts[:timeout] || 300_000)
+  end
+
+  @doc """
+  Returns the conversation history from the remote session.
+  """
+  def history(pid) do
+    GenServer.call(pid, :history)
+  end
+
+  @doc """
+  Clears the remote session's conversation history.
+  """
+  def clear(pid) do
+    GenServer.call(pid, :clear)
   end
 
   # ============================================================================
@@ -92,20 +82,22 @@ defmodule Condukt.Sandbox do
   # ============================================================================
 
   @impl true
-  def init(config) do
-    case provision(config) do
-      {:ok, state} ->
-        {:ok, state}
-
-      {:error, reason} ->
-        {:stop, reason}
+  def init({agent_module, agent_opts, sandbox_config}) do
+    case provision(agent_module, agent_opts, sandbox_config) do
+      {:ok, state} -> {:ok, state}
+      {:error, reason} -> {:stop, reason}
     end
   end
 
   @impl true
   def terminate(_reason, state) do
+    if state.remote_session do
+      Logger.debug("Stopping remote session")
+      :peer.call(state.peer_pid, GenServer, :stop, [state.remote_session])
+    end
+
     if state.peer_pid do
-      Logger.debug("Stopping sandbox peer node", node: state.node)
+      Logger.debug("Stopping peer node")
       Terrarium.stop_replica(state.peer_pid)
     end
 
@@ -117,34 +109,128 @@ defmodule Condukt.Sandbox do
     :ok
   end
 
-  @impl true
-  def handle_call(:remote_node, _from, state) do
-    {:reply, state.node, state}
-  end
+  # Handle the same GenServer messages as Condukt.Session so the public API
+  # (Condukt.run/3, Condukt.stream/3, etc.) works transparently.
 
-  def handle_call({:exec_tool, tool_spec, args, context}, _from, state) do
-    # Use :peer.call instead of :erpc.call because :standard_io peer connections
-    # don't use Erlang distribution — :erpc requires distribution and fails with :noconnection.
-    result = :peer.call(state.peer_pid, Condukt.Tool, :execute, [tool_spec, args, context])
+  @impl true
+  def handle_call({:run, prompt, opts}, _from, state) do
+    result = :peer.call(state.peer_pid, Condukt.Session, :run, [state.remote_session, prompt, opts])
     {:reply, result, state}
   catch
     kind, reason ->
       {:reply, {:error, {kind, reason}}, state}
   end
 
+  def handle_call({:subscribe, pid, ref}, _from, state) do
+    {:reply, :ok, %{state | subscribers: [{pid, ref} | Map.get(state, :subscribers, [])]}}
+  end
+
+  def handle_call(:history, _from, state) do
+    result = :peer.call(state.peer_pid, Condukt.Session, :history, [state.remote_session])
+    {:reply, result, state}
+  catch
+    kind, reason ->
+      {:reply, {:error, {kind, reason}}, state}
+  end
+
+  def handle_call(:clear, _from, state) do
+    result = :peer.call(state.peer_pid, Condukt.Session, :clear, [state.remote_session])
+    {:reply, result, state}
+  catch
+    kind, reason ->
+      {:reply, {:error, {kind, reason}}, state}
+  end
+
+  def handle_call(:abort, _from, state) do
+    :peer.call(state.peer_pid, Condukt.Session, :abort, [state.remote_session])
+    {:reply, :ok, state}
+  catch
+    _, _ -> {:reply, :ok, state}
+  end
+
+  def handle_call({:steer, message}, _from, state) do
+    :peer.call(state.peer_pid, Condukt.Session, :steer, [state.remote_session, message])
+    {:reply, :ok, state}
+  catch
+    _, _ -> {:reply, :ok, state}
+  end
+
+  def handle_call({:follow_up, message}, _from, state) do
+    :peer.call(state.peer_pid, Condukt.Session, :follow_up, [state.remote_session, message])
+    {:reply, :ok, state}
+  catch
+    _, _ -> {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_cast({:stream, prompt, opts, subscriber_ref}, state) do
+    # Run the stream on the remote, collect events, and replay to the subscriber
+    parent = self()
+
+    Task.start(fn ->
+      events =
+        :peer.call(
+          state.peer_pid,
+          __MODULE__,
+          :collect_stream,
+          [state.remote_session, prompt, opts]
+        )
+
+      for event <- events do
+        send(parent, {:replay_event, event, subscriber_ref})
+      end
+
+      send(parent, {:replay_done, subscriber_ref})
+    end)
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:replay_event, event, ref}, state) do
+    for {pid, ^ref} <- Map.get(state, :subscribers, []) do
+      send(pid, {ref, event})
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_info({:replay_done, ref}, state) do
+    for {pid, ^ref} <- Map.get(state, :subscribers, []) do
+      send(pid, {ref, :done})
+    end
+
+    subscribers = Enum.reject(Map.get(state, :subscribers, []), fn {_, r} -> r == ref end)
+    {:noreply, %{state | subscribers: subscribers}}
+  end
+
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
+  # ============================================================================
+  # Remote Helpers (executed on the peer node)
+  # ============================================================================
+
+  @doc false
+  def collect_stream(session, prompt, opts) do
+    Condukt.Session.stream(session, prompt, opts)
+    |> Enum.to_list()
+  end
+
   # ============================================================================
   # Provisioning
   # ============================================================================
 
-  defp provision(config) do
-    provider = Map.fetch!(config, :provider)
-    provider_opts = Map.get(config, :provider_opts, [])
+  defp provision(agent_module, agent_opts, sandbox_config) do
+    provider = Map.fetch!(sandbox_config, :provider)
+    provider_opts = Map.get(sandbox_config, :provider_opts, [])
 
     with {:ok, sandbox} <- Terrarium.create(provider, provider_opts),
-         {:ok, peer_pid, node} <- Terrarium.replicate(sandbox) do
-      Logger.info("Sandbox provisioned",
+         {:ok, peer_pid, _node} <- Terrarium.replicate(sandbox),
+         {:ok, remote_session} <- start_remote_session(peer_pid, agent_module, agent_opts) do
+      Logger.info("Sandbox provisioned with remote session",
         sandbox_id: sandbox.id,
-        node: node,
         provider: provider
       )
 
@@ -152,12 +238,28 @@ defmodule Condukt.Sandbox do
        %__MODULE__{
          terrarium_sandbox: sandbox,
          peer_pid: peer_pid,
-         node: node
+         remote_session: remote_session
        }}
     else
       {:error, reason} ->
         Logger.error("Failed to provision sandbox", reason: inspect(reason))
         {:error, reason}
+    end
+  end
+
+  defp start_remote_session(peer_pid, agent_module, agent_opts) do
+    # Remove sandbox config to avoid infinite recursion on the remote
+    agent_opts = Keyword.delete(agent_opts, :sandbox)
+
+    Logger.debug("Starting remote session", agent_module: agent_module)
+
+    case :peer.call(peer_pid, Condukt.Session, :start_link, [agent_module, agent_opts]) do
+      {:ok, remote_session} ->
+        Logger.info("Remote session started")
+        {:ok, remote_session}
+
+      {:error, reason} ->
+        {:error, {:remote_session_failed, reason}}
     end
   end
 end

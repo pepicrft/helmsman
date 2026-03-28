@@ -171,17 +171,19 @@ The agent code is identical. The sandbox is invisible to the agent and the LLM â
 ```mermaid
 sequenceDiagram
     participant User
-    participant Session as Condukt.Session<br/>(local)
-    participant LLM as LLM Provider<br/>(z.ai, Anthropic, etc.)
-    participant Sandbox as exe.dev VM<br/>(remote)
+    participant Proxy as Local Process<br/>(thin proxy)
+    participant Session as Condukt.Session<br/>(in sandbox)
+    participant LLM as LLM Provider
+    participant Tools as Bash Tool<br/>(in sandbox)
 
-    User->>Session: run("What OS is this?")
+    User->>Proxy: run("What OS is this?")
+    Proxy->>Session: :peer.call(run)
     Session->>LLM: prompt + tools
     LLM-->>Session: tool_call: Bash("uname -a")
-    Note over Session,Sandbox: Only tool execution is remote
-    Session->>Sandbox: :peer.call(Bash.execute)
-    Sandbox-->>Session: "Linux 6.x ..."
+    Session->>Tools: Bash.execute("uname -a")
+    Tools-->>Session: "Linux 6.x ..."
     Session->>LLM: tool_result
     LLM-->>Session: "You're running Linux..."
-    Session-->>User: response
+    Session-->>Proxy: {:ok, response}
+    Proxy-->>User: response
 ```
