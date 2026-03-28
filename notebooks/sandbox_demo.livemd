@@ -11,15 +11,21 @@ Mix.install([
 
 ## Setup
 
-Set your Anthropic API key in Livebook's secrets as `LB_ANTHROPIC_API_KEY`.
-The exe.dev token is generated automatically from your SSH key (`~/.ssh/id_ed25519`).
+Enter your Anthropic API key below. The exe.dev token is generated automatically from your SSH key.
 
 ```elixir
-anthropic_key = System.fetch_env!("LB_ANTHROPIC_API_KEY")
+anthropic_input = Kino.Input.password("Anthropic API Key")
+```
 
-# Generate exe.dev token from your SSH key
+```elixir
+anthropic_key = Kino.Input.read(anthropic_input)
+
+if anthropic_key in [nil, ""] do
+  Kino.interrupt!(:error, "Please enter your Anthropic API key above")
+end
+
+# Generate exe.dev token from SSH key
 ssh_key_path = Path.expand("~/.ssh/id_ed25519")
-
 payload = Base.url_encode64("{}", padding: false)
 
 {sig_pem, 0} =
@@ -157,8 +163,8 @@ Kino.nothing()
 
 Notice the difference:
 
-- **Local:** `uname -a` returns your Mac's kernel (Darwin)
-- **Sandbox:** `uname -a` returns the exe.dev VM's kernel (Linux)
+* **Local:** `uname -a` returns your Mac's kernel (Darwin)
+* **Sandbox:** `uname -a` returns the exe.dev VM's kernel (Linux)
 
 The agent code is identical. The sandbox is invisible to the agent and the LLM — only tool execution is transparently remote.
 
