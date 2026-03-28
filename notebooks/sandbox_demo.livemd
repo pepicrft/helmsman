@@ -11,19 +11,9 @@ Mix.install([
 
 ## Setup
 
-Enter your Anthropic API key below. The exe.dev token is generated automatically from your SSH key.
+The exe.dev token is generated automatically from your SSH key. No API keys needed — we use z.ai's free GLM model.
 
 ```elixir
-anthropic_input = Kino.Input.password("Anthropic API Key")
-```
-
-```elixir
-anthropic_key = Kino.Input.read(anthropic_input)
-
-if anthropic_key in [nil, ""] do
-  Kino.interrupt!(:error, "Please enter your Anthropic API key above")
-end
-
 # Generate exe.dev token from SSH key
 ssh_key_path = Path.expand("~/.ssh/id_ed25519")
 payload = Base.url_encode64("{}", padding: false)
@@ -68,7 +58,7 @@ defmodule DemoAgent do
   end
 
   @impl true
-  def model, do: "anthropic:claude-sonnet-4-20250514"
+  def model, do: "zai:glm-4.5-flash"
 
   @impl true
   def thinking_level, do: :off
@@ -80,7 +70,7 @@ end
 First, let's run the agent **locally** — tools execute on this machine.
 
 ```elixir
-{:ok, local_agent} = DemoAgent.start_link(api_key: anthropic_key)
+{:ok, local_agent} = DemoAgent.start_link()
 
 Condukt.stream(local_agent, "What operating system is this? Run `uname -a` to find out.")
 |> Enum.reduce([], fn
@@ -120,7 +110,6 @@ Kino.Frame.append(frame, Kino.Markdown.new("**Starting sandbox...**"))
 
 {:ok, sandbox_agent} =
   DemoAgent.start_link(
-    api_key: anthropic_key,
     sandbox: %{
       provider: Terrarium.Providers.Exe,
       provider_opts: [token: exe_token]
